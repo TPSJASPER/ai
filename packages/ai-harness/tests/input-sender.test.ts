@@ -2,31 +2,48 @@ import { memoryCredentialStore } from '@tanstack/ai/byok/server'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { defineAgent, keyedAdapter, toolDefinition } from '@tanstack/ai'
-import { memoryLogStore, memoryPersistence } from '@tanstack/ai-persistence'
+import {
+  NO_OWNER_EPOCH,
+  memoryLogStore,
+  memoryPersistence,
+} from '@tanstack/ai-persistence'
 import {
   createHarnessHost,
   defineCommand,
   defineHarness,
   definePlugin,
+  logIdOf,
 } from '../src'
 import { credentialsFor } from '../src/auth'
-import { after, gate, mockAdapter, text, toolCall } from './helpers'
+import { after, gate, mockAdapter, stoppedRun, text, toolCall } from './helpers'
 import type { LogRecord } from '@tanstack/ai-persistence'
 import type {
   HarnessPlugin,
   HarnessRouterContext,
+  HarnessRunContext,
   JoinCandidate,
   Operation,
   TurnInfo,
 } from '../src'
 
+// Coverage runs in CI are slow, so polled checks wait up to 5 s.
+const waitFor = <T>(
+  check: () => T | Promise<T>,
+  options?: { timeout?: number; interval?: number },
+) => vi.waitFor(check, { timeout: 5_000, ...options })
+
 const THREAD = 't1'
+/** The id of the log of `THREAD` in the store, and its key in the other stores. */
+const LOG = logIdOf({ logId: THREAD })
 const alice = { id: 'alice' }
 const bob = { id: 'bob' }
 
-/** A tool that keeps who runs it and the context it gets. */
+/**
+ * A tool that keeps the user of its run, and the context it gets without
+ * the run.
+ */
 function whoami() {
-  const seen: Array<{ principal: string | undefined; context: unknown }> = []
+  const seen: Array<{ user: string | undefined; context: unknown }> = []
   const tool = toolDefinition({
     name: 'whoami',
     description: 'Who runs this?',
@@ -34,13 +51,11 @@ function whoami() {
   })
   const plugin = definePlugin({
     name: 'test/whoami',
-    setup: (ctx) => ({
+    setup: () => ({
       tools: [
-        tool.server((_input, toolContext) => {
-          seen.push({
-            principal: ctx.session.principal?.id,
-            context: toolContext?.context,
-          })
+        tool.server<HarnessRunContext>((_input, toolContext) => {
+          const { run, ...context } = toolContext.context
+          seen.push({ user: run.user?.id, context })
           return Promise.resolve({})
         }),
       ],
@@ -50,8 +65,8 @@ function whoami() {
 }
 
 function durablePersistence() {
-  const { runs, metadata } = memoryPersistence().stores
-  return { stores: { log: memoryLogStore(), runs, metadata } }
+  const { metadata } = memoryPersistence().stores
+  return { stores: { log: memoryLogStore(), metadata } }
 }
 
 describe('the sender of each input', () => {
@@ -72,21 +87,21 @@ describe('the sender of each input', () => {
     })
     const session = await host.open(harness, {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
-    expect(await host.open(harness, { threadId: THREAD, principal: bob })).toBe(
-      session,
-    )
+    // Bob's open reaches the same live session. Without host access, a call
+    // may name another sender.
+    await host.open(harness, { threadId: THREAD, user: bob })
 
-    await session.send('Who am I?', { inputId: 'in-bob', principal: bob })
-    // Without a principal, the input is the opener's.
+    await session.send('Who am I?', { inputId: 'in-bob', user: bob })
+    // Without a user, the input is the opener's.
     await session.send('And now?', { inputId: 'in-default' })
 
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob', 'alice'])
-    const inputs = (await persistence.stores.log.read(THREAD))
+    expect(seen.map((entry) => entry.user)).toEqual(['bob', 'alice'])
+    const inputs = (await persistence.stores.log.read({ logId: LOG }))
       .map((entry): LogRecord => entry.record)
       .filter((record) => record.type === 'harness.input')
-      .map((record) => [record['inputId'], record['principal']])
+      .map((record) => [record['inputId'], record['user']])
     expect(inputs).toEqual([
       ['in-bob', { id: 'bob' }],
       ['in-default', { id: 'alice' }],
@@ -112,10 +127,13 @@ describe('the sender of each input', () => {
     const host = createHarnessHost({ persistence, credentials })
     const session = await host.open(
       defineHarness({ name: 'test/sender-keys', adapter }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
-    expect((await session.send('Hi.', { principal: bob })).text).toBe(
+    expect((await session.send('Hi.', { user: bob })).text).toBe(
       'answered with bob-key',
     )
     expect((await session.send('Hi.')).text).toBe('answered with alice-key')
@@ -141,35 +159,36 @@ describe('the sender of each input', () => {
         turn: {
           canJoin: (candidate) => {
             candidates.push(candidate)
-            return candidate.principal?.id === alice.id
+            return candidate.user?.id === alice.id
           },
         },
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     const turn = session.send('Start.')
     await turn.receipt
     await session.send('Mine.', {
       inputId: 'in-bob',
-      principal: bob,
+      user: bob,
       mode: 'steer',
     }).receipt
     release.open()
 
     expect(await turn).toEqual({ text: 'first', media: [] })
-    expect(await session.settled('in-bob')).toMatchObject({
+    expect(await session.settled({ inputId: 'in-bob' })).toMatchObject({
       outcome: 'completed',
     })
     expect(candidates.length).toBeGreaterThan(0)
-    expect(candidates.every((candidate) => candidate.principal === bob)).toBe(
-      true,
-    )
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob'])
+    expect(candidates.every((candidate) => candidate.user === bob)).toBe(true)
+    expect(seen.map((entry) => entry.user)).toEqual(['bob'])
     await host.close()
   })
 
-  it("keeps bob's message out of alice's turn with turnPrincipal, and alice's own steer joins", async () => {
+  it("keeps bob's message out of alice's turn with turnUser, and alice's own steer joins", async () => {
     const { plugin, seen } = whoami()
     const started = gate()
     const release = gate()
@@ -184,17 +203,20 @@ describe('the sender of each input', () => {
     const host = createHarnessHost({ persistence: memoryPersistence() })
     const session = await host.open(
       defineHarness({
-        name: 'test/sender-turn-principal',
+        name: 'test/sender-turn-user',
         adapter,
         plugins: () => [plugin],
         turn: {
           canJoin: (candidate) => {
             candidates.push(candidate)
-            return candidate.principal?.id === candidate.turnPrincipal?.id
+            return candidate.user?.id === candidate.turnUser?.id
           },
         },
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     const turn = session.send('Start.')
@@ -204,22 +226,22 @@ describe('the sender of each input', () => {
     const bobs = session.send('Mine.', {
       busy: 'steer',
       inputId: 'in-bob',
-      principal: bob,
+      user: bob,
     })
     await bobs.receipt
     release.open()
 
     expect(await turn).toEqual({ text: 'First.Joined.', media: [] })
-    expect(await session.settled('in-alice')).toMatchObject({
+    expect(await session.settled({ inputId: 'in-alice' })).toMatchObject({
       operationId: turn.id,
     })
     expect(await bobs).toEqual({ text: 'Bob here.', media: [] })
-    const bobSettled = await session.settled('in-bob')
+    const bobSettled = await session.settled({ inputId: 'in-bob' })
     expect(bobSettled).toMatchObject({ outcome: 'completed' })
     expect(bobSettled.operationId).not.toBe(turn.id)
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob'])
+    expect(seen.map((entry) => entry.user)).toEqual(['bob'])
     expect(candidates).toContainEqual(
-      expect.objectContaining({ principal: bob, turnPrincipal: alice }),
+      expect.objectContaining({ user: bob, turnUser: alice }),
     )
     await host.close()
   })
@@ -241,7 +263,10 @@ describe('the sender of each input', () => {
         adapter,
         plugins: () => [plugin],
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     const turn = session.send('Start.')
@@ -251,18 +276,20 @@ describe('the sender of each input', () => {
     const bobs = session.send('Mine.', {
       busy: 'steer',
       inputId: 'in-bob',
-      principal: bob,
+      user: bob,
     })
     await bobs.receipt
     release.open()
 
     expect(await turn).toEqual({ text: 'First.Joined.', media: [] })
-    expect(await session.settled('in-alice')).toMatchObject({
+    expect(await session.settled({ inputId: 'in-alice' })).toMatchObject({
       operationId: turn.id,
     })
     expect(await bobs).toEqual({ text: 'Bob here.', media: [] })
-    expect((await session.settled('in-bob')).operationId).not.toBe(turn.id)
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob'])
+    expect((await session.settled({ inputId: 'in-bob' })).operationId).not.toBe(
+      turn.id,
+    )
+    expect(seen.map((entry) => entry.user)).toEqual(['bob'])
     await host.close()
   })
 
@@ -284,7 +311,7 @@ describe('the sender of each input', () => {
           again: defineCommand({
             description: 'Ask again',
             run: (_input, { session }) => {
-              commandSaw.push(session.principal?.id)
+              commandSaw.push(session.user?.id)
               again = session.send('Again.')
               return 'ok'
             },
@@ -299,19 +326,22 @@ describe('the sender of each input', () => {
         adapter,
         plugins: () => [plugin, commands],
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     const turn = session.send('Start.')
     await started.opened
     // Bob runs a command while alice's turn runs.
-    await session.command('again', undefined, { principal: bob })
+    await session.runCommand({ name: 'again', user: bob })
     release.open()
 
     expect(await turn).toEqual({ text: 'First.', media: [] })
     expect(commandSaw).toEqual(['bob'])
     expect(await again).toEqual({ text: 'Again.', media: [] })
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob'])
+    expect(seen.map((entry) => entry.user)).toEqual(['bob'])
     await host.close()
   })
 
@@ -331,8 +361,11 @@ describe('the sender of each input', () => {
       name: 'test/starter',
       setup: (ctx) => ({
         tools: [
-          startWriter.server(() => {
-            ctx.agents.start(writer, undefined, { wake: true })
+          startWriter.server<HarnessRunContext>((_input, toolContext) => {
+            ctx.agents.start(writer, undefined, {
+              startTurnWhenDone: true,
+              user: toolContext.context.run.user,
+            })
             return Promise.resolve({})
           }),
         ],
@@ -352,12 +385,15 @@ describe('the sender of each input', () => {
         adapter,
         plugins: () => [plugin, starter],
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
-    await session.send('Start the writer.', { principal: bob })
-    await vi.waitFor(() => expect(seen).toHaveLength(1))
-    expect(seen.map((entry) => entry.principal)).toEqual(['bob'])
+    await session.send('Start the writer.', { user: bob })
+    await waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen.map((entry) => entry.user)).toEqual(['bob'])
     await host.close()
   })
 
@@ -389,8 +425,10 @@ describe('the sender of each input', () => {
       name: 'test/starter',
       setup: (ctx) => ({
         tools: [
-          startWriter.server(() => {
-            started = ctx.agents.start(writer)
+          startWriter.server<HarnessRunContext>((_input, toolContext) => {
+            started = ctx.agents.start(writer, undefined, {
+              user: toolContext.context.run.user,
+            })
             return Promise.resolve({})
           }),
         ],
@@ -416,10 +454,13 @@ describe('the sender of each input', () => {
         adapter,
         plugins: () => [starter],
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
-    await session.send('Start the writer.', { principal: bob })
+    await session.send('Start the writer.', { user: bob })
     release.open()
 
     expect(await started).toBe('drafted')
@@ -429,18 +470,22 @@ describe('the sender of each input', () => {
 })
 
 describe('recovery keeps the sender and the context', () => {
-  /** A run plugin that keeps the turn it is set up for, and a tool that reports. */
+  /** A turn plugin that keeps the turn it is set up for, and a tool that reports. */
   function recorder() {
     const turns: Array<TurnInfo | undefined> = []
     const { plugin, seen } = whoami()
-    const run = definePlugin({
+    const perTurn = definePlugin({
       name: 'test/turns',
-      lifetime: 'run',
+      lifetime: 'turn',
       setup: (ctx) => {
         turns.push(ctx.turn)
       },
     })
-    return { plugins: (): Array<HarnessPlugin> => [plugin, run], turns, seen }
+    return {
+      plugins: (): Array<HarnessPlugin> => [plugin, perTurn],
+      turns,
+      seen,
+    }
   }
 
   const sent = {
@@ -453,14 +498,15 @@ describe('recovery keeps the sender and the context', () => {
   it('runs an input that never ran with its sender and context', async () => {
     const persistence = durablePersistence()
     await persistence.stores.log.append({
-      threadId: THREAD,
+      logId: LOG,
       seq: 1,
+      epoch: NO_OWNER_EPOCH,
       records: [
         {
           type: 'harness.input',
           inputId: 'in-1',
           input: sent,
-          principal: { id: 'bob', tenantId: 'org' },
+          user: { id: 'bob', tenantId: 'org' },
           at: 1,
         },
       ],
@@ -472,11 +518,18 @@ describe('recovery keeps the sender and the context', () => {
     ])
     const host = createHarnessHost({ persistence })
     const session = await host.open(
-      defineHarness({ name: 'test/recover-pending', adapter, plugins }),
-      { threadId: THREAD, principal: alice },
+      defineHarness({
+        name: 'test/recover-pending',
+        adapter,
+        plugins,
+      }),
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
-    expect(await session.settled('in-1')).toMatchObject({
+    expect(await session.settled({ inputId: 'in-1' })).toMatchObject({
       outcome: 'completed',
     })
     expect(turns).toEqual([
@@ -484,24 +537,25 @@ describe('recovery keeps the sender and the context', () => {
         inputId: 'in-1',
         message: 'go',
         context: { screen: 'x' },
-        principal: { id: 'bob', tenantId: 'org' },
+        user: { id: 'bob', tenantId: 'org' },
       }),
     ])
-    expect(seen).toEqual([{ principal: 'bob', context: { screen: 'x' } }])
+    expect(seen).toEqual([{ user: 'bob', context: { screen: 'x' } }])
     await host.close()
   })
 
   it('runs a turn whose host stopped again with its message, sender, and context', async () => {
     const persistence = durablePersistence()
     await persistence.stores.log.append({
-      threadId: THREAD,
+      logId: LOG,
       seq: 1,
+      epoch: NO_OWNER_EPOCH,
       records: [
         {
           type: 'harness.input',
           inputId: 'in-1',
           input: sent,
-          principal: { id: 'bob' },
+          user: { id: 'bob' },
           at: 1,
         },
         {
@@ -515,17 +569,10 @@ describe('recovery keeps the sender and the context', () => {
           keep: 0,
           add: [{ id: 'u1', role: 'user', content: 'go' }],
         },
+        stoppedRun('op-stopped', THREAD, {
+          checkpoint: { at: 1, pendingTools: [] },
+        }),
       ],
-    })
-    await persistence.stores.runs.createOrResume({
-      runId: 'op-stopped',
-      threadId: THREAD,
-      startedAt: Date.now() - 60_000,
-    })
-    await persistence.stores.runs.update('op-stopped', {
-      leaseOwner: 'host-gone',
-      leaseExpiresAt: Date.now() - 1_000,
-      checkpoint: { at: 1, pendingTools: [] },
     })
     const { plugins, turns, seen } = recorder()
     const { adapter } = mockAdapter([
@@ -534,11 +581,18 @@ describe('recovery keeps the sender and the context', () => {
     ])
     const host = createHarnessHost({ persistence })
     const session = await host.open(
-      defineHarness({ name: 'test/recover-stopped', adapter, plugins }),
-      { threadId: THREAD, principal: alice },
+      defineHarness({
+        name: 'test/recover-stopped',
+        adapter,
+        plugins,
+      }),
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
-    expect(await session.settled('in-1')).toMatchObject({
+    expect(await session.settled({ inputId: 'in-1' })).toMatchObject({
       outcome: 'completed',
     })
     expect(turns).toEqual([
@@ -546,21 +600,21 @@ describe('recovery keeps the sender and the context', () => {
         inputId: 'in-1',
         message: 'go',
         context: { screen: 'x' },
-        principal: { id: 'bob' },
+        user: { id: 'bob' },
       }),
     ])
-    expect(seen).toEqual([{ principal: 'bob', context: { screen: 'x' } }])
+    expect(seen).toEqual([{ user: 'bob', context: { screen: 'x' } }])
     await host.close()
   })
 })
 
 describe('the turn where the model is picked', () => {
-  it('gives run plugins and adapter() the message, the context, and the sender', async () => {
+  it('gives turn plugins and adapter() the message, the context, and the sender', async () => {
     const setups: Array<TurnInfo | undefined> = []
     const picks: Array<TurnInfo> = []
-    const runPicker = definePlugin({
-      name: 'test/run-picker',
-      lifetime: 'run',
+    const turnPicker = definePlugin({
+      name: 'test/turn-picker',
+      lifetime: 'turn',
       setup: (ctx) => {
         setups.push(ctx.turn)
         return {
@@ -584,14 +638,17 @@ describe('the turn where the model is picked', () => {
       defineHarness({
         name: 'test/picker-turn',
         adapter,
-        plugins: () => [sessionPlugin, runPicker],
+        plugins: () => [sessionPlugin, turnPicker],
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     const turn = session.send('Pick for me.', {
       inputId: 'in-1',
-      principal: bob,
+      user: bob,
       context: { plan: 'pro' },
     })
     await turn
@@ -601,7 +658,12 @@ describe('the turn where the model is picked', () => {
       inputId: 'in-1',
       message: 'Pick for me.',
       context: { plan: 'pro' },
-      principal: bob,
+      user: bob,
+      run: expect.objectContaining({
+        user: { id: 'bob' },
+        runId: turn.id,
+        threadId: THREAD,
+      }),
     }
     expect(setups).toEqual([expected])
     expect(picks).toEqual([expected])
@@ -630,18 +692,21 @@ describe('the turn where the model is picked', () => {
           },
         },
       }),
-      { threadId: THREAD, principal: alice },
+      {
+        threadId: THREAD,
+        user: alice,
+      },
     )
 
     await session.send('Route me.', {
-      principal: bob,
+      user: bob,
       context: { plan: 'pro' },
     })
 
     expect(seen).toEqual([
       expect.objectContaining({
         input: 'Route me.',
-        principal: bob,
+        user: bob,
         context: { plan: 'pro' },
       }),
     ])
@@ -649,7 +714,7 @@ describe('the turn where the model is picked', () => {
   })
 })
 
-describe('the tenant of a principal', () => {
+describe('the tenant of a user', () => {
   it('scopes credentials by user and tenant', async () => {
     const seen: Array<unknown> = []
     const read = toolDefinition({
@@ -659,10 +724,11 @@ describe('the tenant of a principal', () => {
     })
     const plugin = definePlugin({
       name: 'test/token',
-      setup: (ctx) => ({
+      setup: () => ({
         tools: [
-          read.server(async () => {
-            const credential = await ctx.credentials.get('github')
+          read.server<HarnessRunContext>(async (_input, toolContext) => {
+            const credential =
+              await toolContext.context.run.credentials.get('github')
             seen.push(credential?.type === 'api_key' ? credential.value : null)
             return {}
           }),
@@ -686,13 +752,20 @@ describe('the tenant of a principal', () => {
     ])
     const host = createHarnessHost({ persistence, credentials })
     const session = await host.open(
-      defineHarness({ name: 'test/tenant', adapter, plugins: () => [plugin] }),
-      { threadId: THREAD, principal: { id: 'u1', tenantId: 'org-a' } },
+      defineHarness({
+        name: 'test/tenant',
+        adapter,
+        plugins: () => [plugin],
+      }),
+      {
+        threadId: THREAD,
+        user: { id: 'u1', tenantId: 'org-a' },
+      },
     )
 
     await session.send('Read it.')
     await session.send('Read it again.', {
-      principal: { id: 'u1', tenantId: 'org-b' },
+      user: { id: 'u1', tenantId: 'org-b' },
     })
 
     expect(seen).toEqual(['org-a-token', 'org-b-token'])

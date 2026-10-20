@@ -19,26 +19,47 @@ export interface UsageCounts {
 }
 
 /**
- * The usage of a thread: every model call of its turns, their subagents, and
- * its agent runs. `bySender` has the calls of a known sender only, keyed by
- * the principal id, so its sum can be less than `total`.
+ * The usage of a thread: every model call of its turns, their subagents, its
+ * agent runs, the model calls of plugins (`ctx.model.chat`), of the router,
+ * and of a transfer summary. `bySender` has the calls of a known sender
+ * only, keyed by the user id, and `bySource` has only the calls that
+ * have a source, so their sums can be less than `total`.
  */
 export interface SessionUsage {
   total: UsageCounts
   /** By `provider/model`, for example `anthropic/claude-sonnet-5-5`. */
   byModel: Record<string, UsageCounts>
-  /** By principal id. */
+  /** By user id. */
   bySender: Record<string, UsageCounts>
+  /**
+   * By the source of a call: `plugin:<name>` (for example
+   * `plugin:tanstack/title`), `router`, or `transfer`. Turns and agent runs
+   * have no source, so they are not in it.
+   */
+  bySource: Record<string, UsageCounts>
 }
 
 /** One model call, as the log keeps it. A type, so it is a log record field set. */
 export type UsageCall = {
   model: string
-  principal?: { id: string; tenantId?: string }
+  user?: { id: string; tenantId?: string }
+  /**
+   * The run that made the call: a turn, or an agent run. Its usage also
+   * counts for each run above it in the run tree.
+   */
+  runId?: string
+  /**
+   * Who made a call that is not a turn or an agent run: `plugin:<name>`
+   * for `ctx.model.chat`, `router` for `model.chat` of `routing.router`,
+   * and `transfer` for the summary of `host.transfer`.
+   */
+  source?: string
+  /** The `label` of the call, for example `judge`, or `summary` for a transfer. */
+  label?: string
   usage: Omit<UsageCounts, 'calls'>
 }
 
-const emptyCounts = (): UsageCounts => ({
+export const emptyCounts = (): UsageCounts => ({
   calls: 0,
   promptTokens: 0,
   completionTokens: 0,
@@ -51,6 +72,7 @@ export const emptyUsage = (): SessionUsage => ({
   total: emptyCounts(),
   byModel: {},
   bySender: {},
+  bySource: {},
 })
 
 /** The counts that one call adds, from what the provider reported. */
@@ -65,7 +87,8 @@ export function callUsage(usage: TokenUsage): UsageCall['usage'] {
   }
 }
 
-function add(counts: UsageCounts, usage: UsageCall['usage']) {
+/** Add the counts of one call to `counts`, in place. */
+export function addCounts(counts: UsageCounts, usage: UsageCall['usage']) {
   counts.calls += 1
   counts.promptTokens += usage.promptTokens
   counts.completionTokens += usage.completionTokens
@@ -77,7 +100,7 @@ function add(counts: UsageCounts, usage: UsageCall['usage']) {
 
 /**
  * The counts under `key`, added when missing. An own property, so a key like
- * `__proto__` (a principal id) never reaches the prototype.
+ * `__proto__` (a user id) never reaches the prototype.
  */
 function countsOf(map: Record<string, UsageCounts>, key: string) {
   if (!Object.hasOwn(map, key)) {
@@ -93,10 +116,13 @@ function countsOf(map: Record<string, UsageCounts>, key: string) {
 
 /** Add one call to `totals`, in place. */
 export function addUsage(totals: SessionUsage, call: UsageCall) {
-  add(totals.total, call.usage)
-  add(countsOf(totals.byModel, call.model), call.usage)
-  if (call.principal) {
-    add(countsOf(totals.bySender, call.principal.id), call.usage)
+  addCounts(totals.total, call.usage)
+  addCounts(countsOf(totals.byModel, call.model), call.usage)
+  if (call.user) {
+    addCounts(countsOf(totals.bySender, call.user.id), call.usage)
+  }
+  if (call.source !== undefined) {
+    addCounts(countsOf(totals.bySource, call.source), call.usage)
   }
 }
 
@@ -107,6 +133,7 @@ export function isSessionUsage(value: unknown): value is SessionUsage {
     value !== null &&
     'total' in value &&
     'byModel' in value &&
-    'bySender' in value
+    'bySender' in value &&
+    'bySource' in value
   )
 }

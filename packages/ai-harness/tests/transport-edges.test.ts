@@ -2,20 +2,32 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { defineAgent, toolDefinition } from '@tanstack/ai'
 import { memoryPersistence } from '@tanstack/ai-persistence'
+import { createHarnessHost, defineHarness } from '../src'
 import {
   applyInput,
   capabilitiesOf,
   createHarnessHandler,
-  createHarnessHost,
-  defineHarness,
   handleHarnessSocket,
   parseControlFrame,
   parseHarnessInput,
-} from '../src'
+} from '../src/server'
 import { createHarnessClient } from '../src/client'
-import { gate, mockAdapter, text, toolCall, untilAborted } from './helpers'
-import type { WebSocketLike } from '@tanstack/ai'
-import type { HostFrame } from '../src'
+import {
+  fakeSocket,
+  gate,
+  mockAdapter,
+  readSse,
+  text,
+  toolCall,
+  untilAborted,
+} from './helpers'
+import type { PresenceEvent } from '../src'
+
+// Coverage runs in CI are slow, so polled checks wait up to 5 s.
+const waitFor = <T>(
+  check: () => T | Promise<T>,
+  options?: { timeout?: number; interval?: number },
+) => vi.waitFor(check, { timeout: 5_000, ...options })
 
 const pricer = defineAgent({
   name: 'pricer',
@@ -37,6 +49,9 @@ const remove = toolDefinition({
 }).server(async () => ({ removed: true }))
 
 const auth = { authorization: 'Bearer good' }
+const user = { id: 'user-1' }
+/** The upgrade request of a socket of `user`. */
+const upgrade = new Request('http://x/api/harness/socket', { headers: auth })
 
 function setup(replies: Parameters<typeof mockAdapter>[0] = []) {
   const { adapter, calls } = mockAdapter(replies)
@@ -48,16 +63,18 @@ function setup(replies: Parameters<typeof mockAdapter>[0] = []) {
     subagents: { agents: [pricer] },
     expose: { agents: ['pricer'] },
   })
-  const host = createHarnessHost({ persistence: memoryPersistence() })
-  const handler = createHarnessHandler({
-    host,
-    harness,
-    authorize: (request) =>
-      request.headers.get('authorization') === 'Bearer good'
-        ? { id: 'user-1' }
-        : null,
-    canAccess: (principal, threadId) => threadId.startsWith(principal.id),
+  const host = createHarnessHost({
+    persistence: memoryPersistence(),
+    access: {
+      getUser: ({ request }) =>
+        request.headers.get('authorization') === 'Bearer good' ? user : null,
+      // A user may use the threads whose id starts with the user id.
+      rules: {
+        isAllowed: ({ user, session }) => session.threadId.startsWith(user.id),
+      },
+    },
   })
+  const handler = createHarnessHandler({ host, harness })
   const call = (path: string, init: RequestInit = {}) =>
     handler(
       new Request(`http://x/api/harness/${path}`, {
@@ -86,7 +103,11 @@ const runBody = (threadId: string, extra: Record<string, unknown> = {}) =>
 
 describe('HTTP handler edges', () => {
   it('answers bad requests with 400, 403, and 404', async () => {
-    const { host, call } = setup()
+    const { host, harness, call } = setup()
+    await host.open(harness, {
+      threadId: 'someone-else',
+      user: { id: 'someone' },
+    })
     const statusOf = async (path: string, init?: RequestInit) =>
       (await call(path, init)).status
 
@@ -161,10 +182,10 @@ describe('HTTP handler edges', () => {
     expect((await control.json()).status).toBe('accepted')
     const snapshotOf = async () =>
       (await call('snapshot?threadId=user-1-resume')).json()
-    await vi.waitFor(async () =>
+    await waitFor(async () =>
       expect((await snapshotOf()).status).toBe('requires_action'),
     )
-    const [interrupt] = (await snapshotOf()).pendingInterrupts
+    const [{ interrupt }] = (await snapshotOf()).pendingWaits
 
     // A thread with no stopped turn has nothing to resume.
     const nothing = await call('run', {
@@ -203,7 +224,7 @@ describe('HTTP handler edges', () => {
         }),
       })
     await prompt('first')
-    await vi.waitFor(async () =>
+    await waitFor(async () =>
       expect(
         (await (await call('snapshot?threadId=user-1-from')).json()).status,
       ).toBe('idle'),
@@ -228,46 +249,24 @@ describe('HTTP handler edges', () => {
 })
 
 describe('WebSocket edges', () => {
-  function fakeSocket(options: { failSend?: boolean } = {}) {
-    const handlers: Record<string, Array<(event?: any) => void>> = {}
-    const sent: Array<HostFrame> = []
-    const closed: Array<number | undefined> = []
-    const socket: WebSocketLike = {
-      send: (data) => {
-        if (options.failSend) throw new Error('socket gone')
-        sent.push(JSON.parse(data))
-      },
-      close: (code?: number) => {
-        closed.push(code)
-        handlers.close?.forEach((handler) => handler())
-      },
-      addEventListener: (type: string, handler: (event?: any) => void) => {
-        ;(handlers[type] ??= []).push(handler)
-      },
-    }
-    const receive = (frame: unknown) =>
-      handlers.message?.forEach((handler) =>
-        handler({
-          data: typeof frame === 'string' ? frame : JSON.stringify(frame),
-        }),
-      )
-    const fail = () => handlers.error?.forEach((handler) => handler())
-    return { socket, sent, closed, receive, fail }
-  }
-
-  it('refuses a thread the principal cannot access', async () => {
+  it('refuses a thread the user cannot access', async () => {
     const { host, harness } = setup()
-    const { socket, sent, closed, receive } = fakeSocket()
-    handleHarnessSocket({
-      host,
-      harness,
-      socket,
-      principal: { id: 'user-1' },
-      canAccess: () => false,
+    await host.open(harness, {
+      threadId: 'user-2-x',
+      user: { id: 'user-2' },
     })
-    receive({ type: 'harness.subscribe', threadId: 'user-1-x' })
-    await vi.waitFor(() => expect(closed).toEqual([4403]))
-    expect(sent).toEqual([{ type: 'harness.error', message: 'forbidden' }])
+    const { socket, sent, closed, receive } = fakeSocket()
+    handleHarnessSocket({ host, harness, socket, request: upgrade })
+    receive({ type: 'harness.subscribe', threadId: 'user-2-x' })
+    await waitFor(() => expect(closed).toEqual([4403]))
+    expect(sent).toEqual([
+      {
+        type: 'harness.error',
+        message: 'forbidden',
+        code: 'forbidden',
+        requestId: expect.any(String),
+      },
+    ])
     await host.close()
   })
 
@@ -278,24 +277,25 @@ describe('WebSocket edges', () => {
       host,
       harness,
       socket: first.socket,
-      principal: { id: 'user-1' },
-      canAccess: () => true,
+      request: upgrade,
     })
     first.receive({ type: 'harness.subscribe', threadId: 'user-1-ws2' })
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(first.sent.some((frame) => frame.type === 'harness.hello')).toBe(
         true,
       ),
     )
     first.receive({ type: 'harness.subscribe', threadId: 'user-1-ws2' })
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(first.sent.at(-1)).toEqual({
         type: 'harness.error',
         message: 'Already subscribed.',
+        code: 'invalid_frame',
+        requestId: expect.any(String),
       }),
     )
     first.receive('[1, 2]')
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(first.sent.at(-1)).toMatchObject({ type: 'harness.error' }),
     )
     first.receive({
@@ -303,7 +303,7 @@ describe('WebSocket edges', () => {
       requestId: 'p1',
       input: { op: 'prompt', message: 'hi' },
     })
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(
         first.sent.some(
           (frame) =>
@@ -324,15 +324,14 @@ describe('WebSocket edges', () => {
       host,
       harness,
       socket: second.socket,
-      principal: { id: 'user-1' },
-      canAccess: () => true,
+      request: upgrade,
     })
     second.receive({
       type: 'harness.subscribe',
       threadId: 'user-1-ws2',
       from: cursor && 'cursor' in cursor ? cursor.cursor : undefined,
     })
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(second.sent.some((frame) => frame.type === 'harness.hello')).toBe(
         true,
       ),
@@ -352,8 +351,7 @@ describe('WebSocket edges', () => {
       host,
       harness,
       socket,
-      principal: { id: 'user-1' },
-      canAccess: () => true,
+      request: upgrade,
     })
     receive({ type: 'harness.subscribe', threadId: 'user-1-ws3' })
     receive({
@@ -361,13 +359,48 @@ describe('WebSocket edges', () => {
       requestId: 'p1',
       input: { op: 'prompt', message: 'hi' },
     })
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(
         sent.find((frame) => frame.type === 'harness.receipt'),
       ).toMatchObject({ requestId: 'p1', status: 'accepted' }),
     )
     expect(sent.some((frame) => frame.type === 'harness.error')).toBe(false)
     socket.close()
+    await host.close()
+  })
+
+  it('closes the socket on a frame over media.maxBodyBytes, and runs nothing', async () => {
+    const { host } = setup()
+    const { adapter, calls } = mockAdapter([() => text('hello')])
+    const harness = defineHarness({
+      name: 'test/transport',
+      adapter,
+      media: { maxBodyBytes: 200 },
+    })
+    const { socket, sent, closed, receive } = fakeSocket()
+    handleHarnessSocket({ host, harness, socket, request: upgrade })
+
+    receive({ type: 'harness.subscribe', threadId: 'user-1-big' })
+    await vi.waitFor(() =>
+      expect(sent.some((frame) => frame.type === 'harness.hello')).toBe(true),
+    )
+    receive({
+      type: 'harness.input',
+      requestId: 'p1',
+      input: { op: 'prompt', message: 'x'.repeat(300) },
+    })
+
+    // The frame is not parsed, so its error frame names the socket, not p1.
+    expect(sent.at(-1)).toEqual({
+      type: 'harness.error',
+      message: 'The frame is bigger than the limit of 200 bytes.',
+      code: 'invalid_frame',
+      requestId: expect.any(String),
+    })
+    expect(sent.at(-1)).not.toMatchObject({ requestId: 'p1' })
+    expect(closed).toEqual([1009])
+    expect(sent.some((frame) => frame.type === 'harness.receipt')).toBe(false)
+    expect(calls).toHaveLength(0)
     await host.close()
   })
 
@@ -378,8 +411,7 @@ describe('WebSocket edges', () => {
       host,
       harness,
       socket,
-      principal: { id: 'user-1' },
-      canAccess: () => true,
+      request: upgrade,
     })
     receive({ type: 'harness.subscribe', threadId: 'user-1-dead' })
     // Nothing to assert on the socket: the send failure must not throw.
@@ -434,45 +466,76 @@ describe('protocol parsing and inputs', () => {
       () => text('queued answer'),
       () => text('follow-up answer'),
     ])
-    const session = await host.open(harness, { threadId: 'user-1-apply' })
+    const session = await host.open(harness, {
+      threadId: 'user-1-apply',
+      user,
+    })
 
-    const first = await applyInput(harness, session, {
-      op: 'prompt',
-      message: 'slow',
+    const first = await applyInput({
+      harness,
+      session,
+      input: {
+        op: 'prompt',
+        message: 'slow',
+      },
     })
     expect(first.status).toBe('accepted')
-    const queued = await applyInput(harness, session, {
-      op: 'prompt',
-      message: 'next',
-      busy: 'queue',
+    const queued = await applyInput({
+      harness,
+      session,
+      input: {
+        op: 'prompt',
+        message: 'next',
+        busy: 'queue',
+      },
     })
     expect(queued.status).toBe('queued')
     expect(
-      await applyInput(harness, session, { op: 'steer', message: 'faster' }),
+      await applyInput({
+        harness,
+        session,
+        input: { op: 'steer', message: 'faster' },
+      }),
     ).toHaveProperty('status')
     expect(
-      await applyInput(harness, session, { op: 'followUp', message: 'after' }),
+      await applyInput({
+        harness,
+        session,
+        input: { op: 'followUp', message: 'after' },
+      }),
     ).toHaveProperty('status')
     release.open()
-    await vi.waitFor(() => expect(session.snapshot().status).toBe('idle'))
+    await waitFor(() => expect(session.snapshot().status).toBe('idle'))
 
     expect(
-      await applyInput(harness, session, { op: 'resolve', resume: [] }),
+      await applyInput({
+        harness,
+        session,
+        input: { op: 'resolve', resume: [] },
+      }),
     ).toMatchObject({ status: 'rejected' })
-    expect(await applyInput(harness, session, { op: 'cancel' })).toHaveProperty(
-      'status',
-    )
+    expect(
+      await applyInput({ harness, session, input: { op: 'cancel' } }),
+    ).toHaveProperty('status')
     // defineHarness refuses this, but a hand-built harness object can name an
     // exposed agent that the session does not have.
     const loose = { ...harness, expose: { agents: ['pricer', 'ghost'] } }
     expect(
-      await applyInput(loose, session, { op: 'agent', agent: 'ghost' }),
+      await applyInput({
+        harness: loose,
+        session,
+        input: { op: 'agent', agent: 'ghost' },
+      }),
     ).toEqual({ inputId: '', status: 'rejected', reason: 'unknown_agent' })
-    const detached = await applyInput(harness, session, {
-      op: 'agent',
-      agent: 'pricer',
-      input: { vendor: 'acme' },
-      detached: true,
+    const detached = await applyInput({
+      harness,
+      session,
+      input: {
+        op: 'agent',
+        agent: 'pricer',
+        input: { vendor: 'acme' },
+        detached: true,
+      },
     })
     expect(detached).toMatchObject({ status: 'accepted' })
     await session.operation(detached.operationId ?? '')
@@ -523,9 +586,9 @@ describe('createHarnessClient edges', () => {
     expect((await client.send('hi', { busy: 'queue' })).status).toBe('accepted')
     await client.send('go on', { mode: 'steer' })
     await client.send('then', { mode: 'followUp' })
-    expect((await client.resolve([])).status).toBe('rejected')
+    expect((await client.resolve({ resume: [] })).status).toBe('rejected')
     await client.cancel()
-    await client.cancel('op-missing')
+    await client.cancel({ operationId: 'op-missing' })
     expect(
       (await client.agents.pricer.start({ vendor: 'x' }, { detached: true }))
         .status,
@@ -613,18 +676,265 @@ describe('createHarnessClient edges', () => {
 describe('an operation that waits for cancel', () => {
   it('cancels through a control input', async () => {
     const { host, harness } = setup([untilAborted()])
-    const session = await host.open(harness, { threadId: 'user-1-cancel' })
+    const session = await host.open(harness, {
+      threadId: 'user-1-cancel',
+      user,
+    })
     const operation = session.send('wait')
-    await vi.waitFor(() => expect(session.snapshot().status).toBe('running'))
-    await applyInput(harness, session, {
-      op: 'cancel',
-      operationId: operation.id,
+    await waitFor(() => expect(session.snapshot().status).toBe('running'))
+    await applyInput({
+      harness,
+      session,
+      input: {
+        op: 'cancel',
+        operationId: operation.id,
+      },
     })
     await operation.then(
       () => undefined,
       () => undefined,
     )
     expect(operation.status()).toBe('cancelled')
+    await host.close()
+  })
+})
+
+describe('presence hooks', () => {
+  /** A host whose presence hooks keep each call in `connected` and `left`. */
+  function presenceSetup(
+    hooks: { failConnect?: boolean; failDisconnect?: boolean } = {},
+  ) {
+    const connected: Array<PresenceEvent> = []
+    const left: Array<PresenceEvent & { reason: string }> = []
+    const harness = defineHarness({
+      name: 'test/presence',
+      adapter: mockAdapter([() => text('hi'), () => text('again')]).adapter,
+    })
+    const host = createHarnessHost({
+      persistence: memoryPersistence(),
+      access: {
+        getUser: ({ request }) =>
+          request.headers.get('authorization') === 'Bearer good' ? user : null,
+        rules: { isAllowed: () => true },
+      },
+      presence: {
+        onConnect: (event) => {
+          connected.push(event)
+          if (hooks.failConnect) throw new Error('connect hook failed')
+        },
+        onDisconnect: async (event) => {
+          left.push(event)
+          if (hooks.failDisconnect) throw new Error('disconnect hook failed')
+        },
+      },
+    })
+    const handler = createHarnessHandler({ host, harness })
+    const call = (path: string, init: RequestInit = {}) =>
+      handler(
+        new Request(`http://x/api/harness/${path}`, {
+          ...init,
+          headers: {
+            ...auth,
+            'content-type': 'application/json',
+            ...init.headers,
+          },
+        }),
+      )
+    const prompt = (threadId: string) =>
+      call('control', {
+        method: 'POST',
+        body: JSON.stringify({
+          threadId,
+          input: { op: 'prompt', message: 'Hi.' },
+        }),
+      })
+    return { host, harness, call, prompt, connected, left }
+  }
+
+  const isHello = (frame: { type?: string }) => frame.type === 'harness.hello'
+
+  it('reports one connect and one disconnect for each SSE stream, with a new id for each tab', async () => {
+    const { host, call, prompt, connected, left } = presenceSetup()
+    await prompt('t-sse')
+    await waitFor(async () =>
+      expect(
+        (await (await call('snapshot?threadId=t-sse')).json()).status,
+      ).toBe('idle'),
+    )
+    expect(connected).toEqual([])
+
+    const first = await call('events?threadId=t-sse')
+    const second = await call('events?threadId=t-sse', {
+      headers: { 'Last-Event-ID': '0' },
+    })
+    await readSse(first, isHello)
+    await readSse(second, isHello)
+
+    await waitFor(() => expect(left).toHaveLength(2))
+    expect(connected).toEqual([
+      {
+        user,
+        threadId: 't-sse',
+        harness: 'test/presence',
+        connectionId: expect.any(String),
+        transport: 'sse',
+        resumed: false,
+      },
+      expect.objectContaining({ transport: 'sse', resumed: true }),
+    ])
+    expect(connected[0]?.connectionId).not.toBe(connected[1]?.connectionId)
+    expect(
+      left.map(({ connectionId, reason }) => [connectionId, reason]),
+    ).toEqual(connected.map(({ connectionId }) => [connectionId, 'closed']))
+    await host.close()
+  })
+
+  it('reports revoked when a revoke closes an SSE stream', async () => {
+    const { host, call, prompt, connected, left } = presenceSetup()
+    await prompt('t-revoke')
+    const reading = readSse(await call('events?threadId=t-revoke'), () => false)
+    await waitFor(() => expect(connected).toHaveLength(1))
+
+    host.revoke({ threadId: 't-revoke', user })
+    await reading
+
+    await waitFor(() =>
+      expect(left).toEqual([expect.objectContaining({ reason: 'revoked' })]),
+    )
+    await host.close()
+  })
+
+  it('reports a socket after its subscribe, and closed, revoked, or error at its end', async () => {
+    const { host, harness, prompt, connected, left } = presenceSetup()
+    await prompt('t-ws')
+    const open = (from?: string) => {
+      const fake = fakeSocket()
+      handleHarnessSocket({
+        host,
+        harness,
+        socket: fake.socket,
+        request: upgrade,
+      })
+      fake.receive({
+        type: 'harness.subscribe',
+        threadId: 't-ws',
+        ...(from ? { from } : {}),
+      })
+      return fake
+    }
+
+    const closing = open()
+    const failing = open('0')
+    await waitFor(() => expect(connected).toHaveLength(2))
+    expect(connected).toEqual([
+      expect.objectContaining({
+        transport: 'websocket',
+        resumed: false,
+        threadId: 't-ws',
+      }),
+      expect.objectContaining({ transport: 'websocket', resumed: true }),
+    ])
+    closing.socket.close()
+    failing.fail()
+    await waitFor(() => expect(left).toHaveLength(2))
+    const revoking = open()
+    await waitFor(() => expect(connected).toHaveLength(3))
+    host.revoke({ threadId: 't-ws', user })
+
+    await waitFor(() => expect(revoking.closed).toEqual([4403]))
+    expect(
+      left.map(({ connectionId, reason }) => [connectionId, reason]),
+    ).toEqual([
+      [connected[0]?.connectionId, 'closed'],
+      [connected[1]?.connectionId, 'error'],
+      [connected[2]?.connectionId, 'revoked'],
+    ])
+    await host.close()
+  })
+
+  it('reports error when a slow client makes the server close the stream', async () => {
+    const { host, harness, prompt, connected, left } = presenceSetup()
+    await prompt('t-slow')
+    // One byte of queue and 50 ms: a client that does not read is slow.
+    const stream = { sseQueueBytes: 1, slowConsumerMs: 50 }
+    const handler = createHarnessHandler({ host, harness, stream })
+    const response = await handler(
+      new Request('http://x/api/harness/events?threadId=t-slow', {
+        headers: auth,
+      }),
+    )
+    const fake = fakeSocket()
+    handleHarnessSocket({
+      host,
+      harness,
+      socket: Object.assign(fake.socket, { bufferedAmount: 2 }),
+      request: upgrade,
+      stream: { socketBufferBytes: 1, slowConsumerMs: 50 },
+    })
+    fake.receive({ type: 'harness.subscribe', threadId: 't-slow' })
+
+    await waitFor(() => expect(left).toHaveLength(2))
+    expect(fake.closed).toEqual([4408])
+    expect(
+      left.map(({ transport, reason }) => [transport, reason]).sort(),
+    ).toEqual([
+      ['sse', 'error'],
+      ['websocket', 'error'],
+    ])
+    expect(connected).toHaveLength(2)
+    await response.body?.cancel()
+    await host.close()
+  })
+
+  it('keeps the stream when a hook throws, and only warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { host, call, prompt, connected, left } = presenceSetup({
+      failConnect: true,
+      failDisconnect: true,
+    })
+    await prompt('t-throw')
+
+    const frames = await readSse<{ type?: string }>(
+      await call('events?threadId=t-throw&from=0'),
+      (frame) => frame.type === 'harness.event',
+    )
+
+    expect(frames.map((frame) => frame.type)).toEqual([
+      'harness.hello',
+      'harness.event',
+    ])
+    await waitFor(() => expect(left).toHaveLength(1))
+    expect(connected).toHaveLength(1)
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('disconnect hook failed'),
+      ),
+    )
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('connect hook failed'),
+    )
+    warn.mockRestore()
+    await host.close()
+  })
+
+  it('does not report a POST run stream or a read from code', async () => {
+    const { host, harness, call, connected } = presenceSetup()
+    const run = await call('run', {
+      method: 'POST',
+      body: runBody('t-run', {
+        messages: [{ id: 'u1', role: 'user', content: 'Hi.' }],
+      }),
+    })
+    expect(await run.text()).toContain('RUN_FINISHED')
+    const view = await host.observe(harness, {
+      threadId: 't-run',
+      user,
+    })
+    const controller = new AbortController()
+    const events = view.events({ from: '0', signal: controller.signal })
+    for await (const _ of events) break
+
+    expect(connected).toEqual([])
     await host.close()
   })
 })

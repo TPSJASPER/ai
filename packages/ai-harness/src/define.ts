@@ -16,12 +16,18 @@ import type {
   SystemPrompt,
 } from '@tanstack/ai'
 import type { AnyAgent } from './agents'
+import type { ProjectOptions, ReduceOptions } from './log'
 import type { MediaOptions } from './media'
-import type { HarnessPlugin, PluginMetadataCheck } from './plugins'
+import type { HarnessPlugin, PluginMetadataCheck, PluginModel } from './plugins'
 import type { HarnessSession } from './session/index'
 import type { MetadataOf } from './session-entry'
 import type { HarnessTurnOptions, RecoverHook } from './turn'
-import type { BusyPolicy, Principal, ThreadSettings, UserInput } from './types'
+import type {
+  BusyPolicy,
+  HarnessUser,
+  ThreadSettings,
+  UserInput,
+} from './types'
 
 /**
  * The `subagents` option: the same as `chat({ subagents })`, without
@@ -57,40 +63,111 @@ export interface HarnessRouterContext<TMetadataSchema = any> {
   operationId: string
   /** The id of the turn input, when the turn has one. */
   inputId?: string
-  /** Who sent the turn input. Default: the principal that opened the session. */
-  principal?: Principal
+  /** Who sent the turn input. Default: the user that opened the session. */
+  user?: HarnessUser
   /** The `context` of the turn input. Client data: do not trust it. */
   context?: unknown
   /** The main text adapter of the turn, with the user's keys bound. */
   adapter: AnyTextAdapter
+  /**
+   * Call a model to pick the agent, as `ctx.model.chat` of a plugin does.
+   * The call has the keys of the sender and the signal of the turn. Its
+   * usage counts in the session (`session.usage().bySource` under
+   * `router`) and in the turn. The `run` option is ignored: the call is
+   * always for this turn.
+   *
+   * @example
+   * ```ts
+   * router: async ({ model, messages }) => {
+   *   const { text } = await model.chat({
+   *     options: {
+   *       messages,
+   *       systemPrompts: ['Answer "billing" or "support". Nothing else.'],
+   *     },
+   *     label: 'pick',
+   *   })
+   *   return text.trim() === 'billing' ? 'billing' : undefined
+   * }
+   * ```
+   */
+  model: PluginModel
+  /**
+   * The root agent that answers the turns of this thread since the last
+   * handoff. `undefined`: the main model answers. Return `undefined` from
+   * the router to send the turn to it.
+   *
+   * The `agents()` plugin has its own primary agent (its `agent` config and
+   * `/agent`). That one changes the prompt and tools of the main model. It
+   * is not this value, and neither one changes the other.
+   */
+  activeAgent?: string
 }
+
+/**
+ * What `routing.router` returns: a pick of `subagents.router`, a handoff, or
+ * `undefined`.
+ * - `undefined`: the active agent answers, else the main model.
+ * - One agent name: that agent answers, and it becomes the active agent.
+ * - `'main'`: the main model answers, and no agent is active.
+ * - `{ handoff, note }`: a handoff to that root agent (or `'main'`). The log
+ *   keeps the note. Then the target answers, and it becomes the active agent.
+ * - `{ name, input }`, a list, `{ names }`, or `{ steps }`: those agents
+ *   answer. The active agent does not change.
+ */
+export type HarnessRouterPick =
+  | SubagentRouterPick
+  | { handoff: string; note?: string }
+  | undefined
 
 /**
  * The `routing` option. The other fields mean the same as in `subagents`.
- * `limits` defaults to `subagents.limits`. With `strategy: 'handoff'`, the
- * main model answers after the agents, in the same turn, and it keeps its
- * `subagents`.
+ * `limits` defaults to `subagents.limits`. The `strategy` of `subagents` is
+ * not here: use `afterAgentsAnswer`.
  */
 export interface HarnessRouting<TMetadataSchema = any> extends Pick<
   SubagentsBag,
-  'order' | 'strategy' | 'limits' | 'sandbox'
+  'order' | 'limits' | 'sandbox'
 > {
   /**
-   * Pick who answers the turn, with the picks of `subagents.router`:
-   * `'main'`, an agent name, a list of names, `{ names, order }`, or
-   * `{ steps }`. Give an agent with `inputSchema` its input with
-   * `{ name, input }`. A throw fails the turn.
+   * Pick who answers the turn: `undefined` (the active agent), `'main'`, an
+   * agent name, a list of names, `{ names, order }`, `{ steps }`, or
+   * `{ handoff, note }`. Give an agent with `inputSchema` its input with
+   * `{ name, input }`. A throw fails the turn. See {@link HarnessRouterPick}.
    */
   router: (
     ctx: HarnessRouterContext<TMetadataSchema>,
-  ) => SubagentRouterPick | Promise<SubagentRouterPick>
+  ) => HarnessRouterPick | Promise<HarnessRouterPick>
+  /**
+   * What happens after the picked agents answer. `'end-turn'`: the turn
+   * ends. `'main-answers'`: the main model answers next, in the same turn,
+   * with their answers in the transcript, and it keeps its `subagents`.
+   * Default `'end-turn'`.
+   */
+  afterAgentsAnswer?: 'end-turn' | 'main-answers'
+  /**
+   * Let the models and your code hand the turn to a person. When true, the
+   * `to` of the `handoff` tool also takes `{ human: true }`, and
+   * `ctx.harness.handoff({ to: { human: true } })` and `run.handoff` open a
+   * `human` wait. When false, the `handoff` tool offers only the agents and
+   * `'main'`, and a handoff to a person rejects. Default `false`.
+   */
+  allowHandoffToHuman?: boolean
+  /**
+   * Give the main model and each root agent the `handoff` tool. When false,
+   * no model gets it, and an app tool can use the name `handoff`. The
+   * router and your code (`ctx.harness.handoff`, `run.handoff`) can still
+   * hand off. Default `true`.
+   */
+  giveModelsHandoffTool?: boolean
 }
 
 /**
- * Limits for one input on a durable host (a host with `stores.log`). A host
- * without a log reads only `interruptedToolResult` and `truncatedToolResult`.
+ * Limits for one input, and how the host folds your own log records.
  */
-export interface HarnessDurability<TMetadataSchema = any> {
+export interface HarnessDurability<
+  TMetadataSchema = any,
+  TLogState = undefined,
+> {
   /**
    * Total attempts for one input, the first run included. Each recovery after
    * a crash is one more attempt. When no attempt is left, the input fails
@@ -105,7 +182,7 @@ export interface HarnessDurability<TMetadataSchema = any> {
   timeoutMs?: number
   /**
    * Decide how an input that a crashed host left recovers: an input that
-   * never ran, and a turn whose lease expired. The context has the decision
+   * never ran, and a turn whose host stopped. The context has the decision
    * the harness takes by default. Return `undefined` to keep it. Return
    * `{ action: 'run', overrides }` to run the turn with `TurnOverrides`.
    */
@@ -144,6 +221,40 @@ export interface HarnessDurability<TMetadataSchema = any> {
    * off. Continue exactly where it stopped, without repeating it.'`
    */
   continueCutOff?: boolean | { note?: string | ReadonlyArray<string> }
+  /**
+   * Run again an agent that the model started with `background: true`, when
+   * the host stopped during the run. The next host continues it with the
+   * same `subagentRunId`, as a start with `runAgainAfterCrash: true`: the agent code runs
+   * again from its start, `ctx.chat` continues from its saved transcript,
+   * and `ctx.harness.step` keeps its values. A tool call that finished does
+   * not run again. A tool call that ran at the stop runs again. The turn
+   * plugins of the turn that started it are gone. `false`: the run fails, as
+   * a start without `runAgainAfterCrash`. A child that did not start yet still starts.
+   * Default `true`.
+   */
+  resumeBackgroundAgents?: boolean
+  /**
+   * The waits of an agent that the main model calls as a tool: an approval,
+   * a question, a sign-in, an app interrupt, a client tool, and `step.ask`.
+   * `true`: each one is a wait of the turn, in `snapshot().pendingWaits`.
+   * After the answer, the agent goes on from where it stopped, and its
+   * result goes to the main model. `false`: the agent does not wait. A call
+   * that needs an approval gets a tool error, and `step.ask` throws.
+   * Default `true`.
+   */
+  agentToolWaits?: boolean
+  /**
+   * How a durable host folds your own log records into the model context of
+   * each session.
+   */
+  addRecordsToModelContext?: ProjectOptions
+  /**
+   * A fold of every host record of the log of a session tree: the root
+   * thread and its child threads (agent chains and subagent runs), in log
+   * order. Read it with `session.logState()`, or with `view.logState()` of
+   * `host.observe`, on any machine.
+   */
+  logState?: ReduceOptions<TLogState>
 }
 
 /**
@@ -156,6 +267,7 @@ export interface HarnessConfig<
   TSubagents extends ReadonlyArray<AnyAgent> = ReadonlyArray<AnyAgent>,
   TMetadataSchema = undefined,
   TTools extends ReadonlyArray<AnyTool> = ReadonlyArray<AnyTool>,
+  TLogState = undefined,
 > {
   /** A stable name, for example `'acme/studio'`. */
   name: string
@@ -170,7 +282,7 @@ export interface HarnessConfig<
    */
   adapter?: TAdapter | KeyedAdapter<TAdapter>
   /**
-   * Models a thread can pick by name with `session.configure({ model })`.
+   * Models a thread can pick by name with `session.updateThreadSettings({ model })`.
    * The stored name picks the model of each turn, after `overrides.adapter`
    * and before a plugin `adapter()`.
    */
@@ -238,16 +350,19 @@ export interface HarnessConfig<
    * The shape of the `metadata` of the session index entry of each thread,
    * as a Standard Schema (for example a zod object). Each write checks it:
    * `host.sessions.update`, the `update` op of `POST sessions`, and
-   * `updateEntry` of plugins and sessions. A write it refuses throws
+   * `updateIndexEntry` of plugins and sessions. A write it refuses throws
    * `SessionMetadataError` and writes nothing. It also types the metadata
-   * of those writes, of `session.entry()`, of the hooks, and of a client
+   * of those writes, of `session.indexEntry()`, of the hooks, and of a client
    * made with `createHarnessClient<typeof harness>`.
    */
   metadataSchema?: TMetadataSchema
   /** What a `prompt` does while a chat turn runs. Default `'queue'`. */
   busy?: BusyPolicy
-  /** Attempt and time limits for each input on a durable host. */
-  durability?: HarnessDurability<TMetadataSchema>
+  /**
+   * Attempt and time limits for each input on a durable host, and how that
+   * host folds your own log records (`addRecordsToModelContext` and `logState`).
+   */
+  durability?: HarnessDurability<TMetadataSchema, TLogState>
   /** Hooks that control a chat turn: retries, joins, and the end of a turn. */
   turn?: HarnessTurnOptions<TMetadataSchema>
   /**
@@ -262,25 +377,25 @@ export interface HarnessConfig<
     /**
      * The thread settings a client may change with a `configure` input. An
      * input with any other field is refused with `not_exposed`. Server code
-     * that calls `session.configure()` can change every field. `plugins` and
+     * that calls `session.updateThreadSettings()` can change every field. `plugins` and
      * `instructions` let a client turn off a plugin and write into the
      * system prompt, so expose them only to clients you trust.
      */
     settings?: ReadonlyArray<keyof ThreadSettings>
     /**
      * The plugin config keys a client may set with a `config` input, for
-     * example `client.setConfig({ key: 'model', value: 'fast' })`. An input with any other
+     * example `client.setPluginSetting({ key: 'model', value: 'fast' })`. An input with any other
      * key is refused with `not_exposed`. Server code that calls
-     * `session.setConfig()` can set every key. Warning: `mode` of
+     * `session.setPluginSetting()` can set every key. Warning: `mode` of
      * `permissions()` lets a client turn approvals off with `bypass`. Keep
      * `mode` on the server, or expose it only to clients you trust.
      */
     config?: ReadonlyArray<string>
     /**
      * The commands a client may run with a `command` input, for example
-     * `client.command('undo')`, or `/undo` in a session view on a client.
-     * An input with any other command is refused with `not_exposed`. Server
-     * code that calls `session.command()` can run every command. Warning:
+     * `client.runCommand({ name: 'undo' })`, or `/undo` in a session view on a
+     * client. An input with any other command is refused with `not_exposed`.
+     * Server code that calls `session.runCommand()` can run every command. Warning:
      * `/mode bypass` of `permissions()` turns approvals off, so expose `mode`
      * only to clients you trust. Plugins add their commands when a session
      * opens, so `defineHarness` does not check these names.
@@ -297,9 +412,9 @@ export interface HarnessConfig<
      * The host record types a client may add with an `append` input, for
      * example a webhook that adds `{ type: 'app.signal', text }`. An input
      * with any other type, or with a `thread` field, is refused with
-     * `not_exposed`. Server code that calls `session.append()` can add every
-     * type. Only a durable host (with `stores.log`) keeps records, and its
-     * `project` decides what the model sees of them.
+     * `not_exposed`. Server code that calls `session.appendRecords()` can add every
+     * type. The log keeps the records, and `durability.addRecordsToModelContext` decides
+     * what the model sees of them.
      */
     records?: ReadonlyArray<string>
   }
@@ -314,8 +429,16 @@ export type HarnessDefinition<
   TSubagents extends ReadonlyArray<AnyAgent> = ReadonlyArray<AnyAgent>,
   TMetadataSchema = undefined,
   TTools extends ReadonlyArray<AnyTool> = ReadonlyArray<AnyTool>,
+  TLogState = undefined,
 > = Readonly<
-  HarnessConfig<TAdapter, TAgents, TSubagents, TMetadataSchema, TTools>
+  HarnessConfig<
+    TAdapter,
+    TAgents,
+    TSubagents,
+    TMetadataSchema,
+    TTools,
+    TLogState
+  >
 > & {
   readonly kind: typeof HARNESS_KIND
   readonly version: 1
@@ -327,31 +450,59 @@ export type AnyHarness = HarnessDefinition<
   any,
   any,
   any,
-  ReadonlyArray<AnyTool>
+  ReadonlyArray<AnyTool>,
+  any
 >
 
 /** A session whose harness has the metadata schema `TMetadataSchema`. */
 export type SessionWithMetadata<TMetadataSchema> = HarnessSession<
-  HarnessDefinition<any, any, any, TMetadataSchema>
+  HarnessDefinition<any, any, any, TMetadataSchema, ReadonlyArray<AnyTool>, any>
 >
+
+// `durability.logState` makes the log state type invariant, so each pattern
+// below takes any log state (the last `any`).
 
 /** The type of the session index `metadata` of a harness. */
 export type SessionMetadataOf<THarness> =
-  THarness extends HarnessDefinition<any, any, any, infer TMetadataSchema>
+  THarness extends HarnessDefinition<
+    any,
+    any,
+    any,
+    infer TMetadataSchema,
+    ReadonlyArray<AnyTool>,
+    any
+  >
     ? MetadataOf<TMetadataSchema>
     : Record<string, unknown>
 
 /** Every agent a harness registers, as a union. */
 export type HarnessAgentsOf<THarness> =
-  THarness extends HarnessDefinition<any, infer TAgents, infer TSubagents, any>
+  THarness extends HarnessDefinition<
+    any,
+    infer TAgents,
+    infer TSubagents,
+    any,
+    ReadonlyArray<AnyTool>,
+    any
+  >
     ? TAgents[number] | TSubagents[number]
     : never
 
 /** The `tools` of a harness, as a union. */
 export type HarnessToolsOf<THarness> =
-  THarness extends HarnessDefinition<any, any, any, any, infer TTools>
+  THarness extends HarnessDefinition<any, any, any, any, infer TTools, any>
     ? TTools[number]
     : never
+
+/**
+ * The state of the `durability.logState` fold of a harness, as
+ * `session.logState()` returns it. `undefined` for a harness without `durability.logState`.
+ */
+export type HarnessLogStateOf<THarness> = THarness extends {
+  durability?: { logState?: ReduceOptions<infer TLogState> }
+}
+  ? TLogState
+  : undefined
 
 /**
  * The input of the harness tool `TName`, from its input schema. `unknown`
@@ -393,9 +544,24 @@ export function defineHarness<
   const TSubagents extends ReadonlyArray<AnyAgent> = readonly [],
   TMetadataSchema extends SchemaInput | undefined = undefined,
   const TTools extends ReadonlyArray<AnyTool> = readonly [],
+  TLogState = undefined,
 >(
-  config: HarnessConfig<TAdapter, TAgents, TSubagents, TMetadataSchema, TTools>,
-): HarnessDefinition<TAdapter, TAgents, TSubagents, TMetadataSchema, TTools> {
+  config: HarnessConfig<
+    TAdapter,
+    TAgents,
+    TSubagents,
+    TMetadataSchema,
+    TTools,
+    TLogState
+  >,
+): HarnessDefinition<
+  TAdapter,
+  TAgents,
+  TSubagents,
+  TMetadataSchema,
+  TTools,
+  TLogState
+> {
   if (config.name.trim() === '') {
     throw new Error('defineHarness requires a non-empty name')
   }

@@ -3,14 +3,14 @@ import { defineAgent } from '@tanstack/ai'
 import { memoryPersistence } from '@tanstack/ai-persistence'
 import {
   configOption,
-  createHarnessHandler,
   createHarnessHost,
   defineCommand,
   defineHarness,
   definePlugin,
 } from '../src'
+import { createHarnessHandler } from '../src/server'
 import { createHarnessClient } from '../src/client'
-import { mockAdapter, text, toolCall } from './helpers'
+import { mockAdapter, questionsOf, text, toolCall } from './helpers'
 
 const asker = definePlugin({
   name: 'test/asker',
@@ -20,11 +20,25 @@ const asker = definePlugin({
       confirm: defineCommand({
         description: 'Ask, then answer',
         run: async (_input, ctx) =>
-          `got ${String(await ctx.session.ask({ message: 'Sure?' }))}`,
+          `got ${String(await ctx.step.ask({ name: 'sure', message: 'Sure?' }))}`,
       }),
     },
   }),
 })
+
+const user = { id: 'u' }
+
+/** A host where `user` may use every thread but `someone-else`. */
+const accessHost = () =>
+  createHarnessHost({
+    persistence: memoryPersistence(),
+    access: {
+      getUser: () => user,
+      rules: {
+        isAllowed: ({ session }) => session.threadId !== 'someone-else',
+      },
+    },
+  })
 
 function setup(
   fetchWrap?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch,
@@ -36,13 +50,8 @@ function setup(
     plugins: () => [asker],
     expose: { config: ['tone'], commands: ['confirm'] },
   })
-  const host = createHarnessHost({ persistence: memoryPersistence() })
-  const handler = createHarnessHandler({
-    host,
-    harness,
-    authorize: () => ({ id: 'u' }),
-    canAccess: (_principal, threadId) => threadId !== 'someone-else',
-  })
+  const host = accessHost()
+  const handler = createHarnessHandler({ host, harness })
   const direct: typeof globalThis.fetch = (input, init) =>
     handler(new Request(input, init))
   const client = createHarnessClient({
@@ -51,7 +60,7 @@ function setup(
     fetch: fetchWrap ? fetchWrap(direct) : direct,
     reconnectDelayMs: 1,
   })
-  return { host, client, handler }
+  return { host, harness, client, handler }
 }
 
 describe('client reads and actions', () => {
@@ -78,11 +87,13 @@ describe('client reads and actions', () => {
   it('runs a command, answers its question, and changes a setting', async () => {
     const { host, client } = setup()
 
-    expect((await client.command('confirm')).status).toBe('accepted')
-    await vi.waitFor(async () =>
-      expect((await client.snapshot()).pendingQuestions).toHaveLength(1),
+    expect((await client.runCommand({ name: 'confirm' })).status).toBe(
+      'accepted',
     )
-    const [question] = (await client.snapshot()).pendingQuestions
+    await vi.waitFor(async () =>
+      expect(questionsOf(await client.snapshot())).toHaveLength(1),
+    )
+    const [question] = questionsOf(await client.snapshot())
     expect(
       (
         await client.answer({
@@ -92,11 +103,11 @@ describe('client reads and actions', () => {
       ).status,
     ).toBe('accepted')
     await vi.waitFor(async () =>
-      expect((await client.snapshot()).pendingQuestions).toHaveLength(0),
+      expect(questionsOf(await client.snapshot())).toHaveLength(0),
     )
 
     expect(
-      (await client.setConfig({ key: 'tone', value: 'warm' })).status,
+      (await client.setPluginSetting({ key: 'tone', value: 'warm' })).status,
     ).toBe('accepted')
     expect((await client.describe()).config[0]?.value).toBe('warm')
     await host.close()
@@ -110,15 +121,15 @@ describe('client reads and actions', () => {
     )
     const [first] = await client.transcript()
 
-    const renamed = await client.renameSession({
+    const renamed = await client.sessions.rename({
       threadId: 'thread-r',
       title: 'Greeting',
     })
-    const pinned = await client.updateSession({
+    const pinned = await client.sessions.update({
       threadId: 'thread-r',
       pinned: true,
     })
-    const fork = await client.forkSession({
+    const fork = await client.sessions.fork({
       threadId: 'thread-r',
       at: { through: first?.id ?? '' },
     })
@@ -131,7 +142,11 @@ describe('client reads and actions', () => {
   })
 
   it('refuses a read without a thread id, or for a thread the user may not open', async () => {
-    const { host, handler } = setup()
+    const { host, harness, handler } = setup()
+    await host.open(harness, {
+      threadId: 'someone-else',
+      user: { id: 'other' },
+    })
     const statusOf = async (path: string) =>
       (await handler(new Request(`http://local/api/harness/${path}`))).status
 
@@ -153,17 +168,17 @@ describe('client reads and actions', () => {
       () => toolCall('writer', { prompt: 'Take notes' }, 'call-1'),
       () => text('Done.'),
     ])
-    const host = createHarnessHost({ persistence: memoryPersistence() })
-    const handler = createHarnessHandler({
-      host,
-      harness: defineHarness({
-        name: 'test/client-reads-agents',
-        adapter,
-        subagents: { agents: [writer] },
-      }),
-      authorize: () => ({ id: 'u' }),
-      canAccess: (_principal, threadId) => threadId !== 'someone-else',
+    const host = accessHost()
+    const harness = defineHarness({
+      name: 'test/client-reads-agents',
+      adapter,
+      subagents: { agents: [writer] },
     })
+    await host.open(harness, {
+      threadId: 'someone-else',
+      user: { id: 'other' },
+    })
+    const handler = createHarnessHandler({ host, harness })
     const client = createHarnessClient({
       url: 'http://local/api/harness',
       threadId: 'thread-a',
@@ -181,19 +196,55 @@ describe('client reads and actions', () => {
     const statusOf = async (path: string) =>
       (await handler(new Request(`http://local/api/harness/${path}`))).status
 
-    const transcript = await client.agentTranscript(childId)
+    const transcript = await client.agentTranscript({ subagentRunId: childId })
 
     expect(transcript.map((message) => message.content)).toEqual([
       'Take notes',
       'Note 1',
     ])
-    expect(await client.agentTranscript('unknown')).toEqual([])
+    expect(await client.agentTranscript({ subagentRunId: 'unknown' })).toEqual(
+      [],
+    )
     expect(await statusOf('agent-transcript?threadId=thread-a')).toBe(400)
     expect(
       await statusOf(
         `agent-transcript?threadId=someone-else&subagentRunId=${childId}`,
       ),
     ).toBe(403)
+    await host.close()
+  })
+
+  it('reads the transcript of an agent run that code starts, by its run id', async () => {
+    const writer = defineAgent({
+      name: 'writer',
+      description: 'Writes notes',
+      run: (ctx) =>
+        ctx.chat({ adapter: mockAdapter(() => text('Note 1')).adapter }),
+    })
+    const host = accessHost()
+    const harness = defineHarness({
+      name: 'test/client-reads-agents',
+      adapter: mockAdapter([]).adapter,
+      agents: [writer],
+    })
+    const session = await host.open(harness, {
+      threadId: 'thread-a',
+      user,
+    })
+    const run = session.agents.writer.start(undefined, { addResultNote: false })
+    await run
+    const handler = createHarnessHandler({ host, harness })
+    const client = createHarnessClient({
+      url: 'http://local/api/harness',
+      threadId: 'thread-a',
+      fetch: (input, init) => handler(new Request(input, init)),
+    })
+
+    const byRun = await client.agentTranscript({ runId: run.id })
+    expect(byRun.map((message) => message.content)).toContain('Note 1')
+    expect(
+      await client.agentTranscript({ subagentRunId: run.subagentRunId }),
+    ).toEqual(byRun)
     await host.close()
   })
 
@@ -210,12 +261,17 @@ describe('client reads and actions', () => {
 
   it('reports the connection state of the event stream', async () => {
     let calls = 0
-    const { host, client } = setup((fetch) => async (input, init) => {
+    const { host, harness, client } = setup((fetch) => async (input, init) => {
       const url = String(input instanceof Request ? input.url : input)
       if (url.includes('/events') && calls++ === 0) {
         return new Response('down', { status: 500 })
       }
       return fetch(input, init)
+    })
+    // With host access, a thread with no session has no events to read.
+    const opened = await host.open(harness, {
+      threadId: 'thread-r',
+      user,
     })
     const states: Array<string> = []
     const reader = new AbortController()
@@ -231,6 +287,7 @@ describe('client reads and actions', () => {
     await vi.waitFor(() => expect(states).toEqual(['reconnecting', 'open']))
     reader.abort()
     await reading
+    await opened.close()
     await host.close()
   })
 })

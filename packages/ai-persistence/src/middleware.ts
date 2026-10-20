@@ -2260,6 +2260,12 @@ export interface WithPersistenceOptions {
    * interval for its transcript writes, with or without `snapshotStreaming`.
    */
   snapshotIntervalMs?: number
+  /**
+   * The tenant of the thread, for `stores.sessions`. The middleware reads the
+   * parent entry of a subagent child from this tenant and writes the child
+   * entry in it. Without it, the default tenant.
+   */
+  tenantId?: string
 }
 
 /**
@@ -2334,6 +2340,7 @@ export function withPersistence<TStores extends ChatTranscriptStores>(
       ? { interrupts: persistence.stores.interrupts }
       : {}),
     ...(sessions ? { sessions } : {}),
+    ...(options.tenantId !== undefined ? { tenantId: options.tenantId } : {}),
   })
 
   function resetStreaming(state: RunStateEntry) {
@@ -2490,13 +2497,18 @@ export function withPersistence<TStores extends ChatTranscriptStores>(
         // (which needs a parentRunId and the client message history the
         // persistence flow deliberately omits).
         if ((config.resume?.length ?? 0) > 0) {
+          // A subagent that a tool call started checks the answers to its own
+          // interrupts, with its own tools, in its own chat() call.
+          const parentPending = ownedPending.filter(
+            (record) => typeof record.payload.subagentRunId !== 'string',
+          )
           const resumeToolState = resumeToolStateFromPending(
-            ownedPending,
+            parentPending,
             resumeByInterruptId,
           )
           const genericResumeState = await durableGenericResumeState(
             ctx,
-            ownedPending,
+            parentPending,
             config.resume ?? [],
             config.tools,
             persistence.stores.interrupts,

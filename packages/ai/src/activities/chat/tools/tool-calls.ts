@@ -36,6 +36,7 @@ import type {
   AfterToolCallDecision,
   AfterToolCallInfo,
   BeforeToolCallDecision,
+  GuardToolCallDecision,
 } from '../middleware/types'
 import type { McpResourceReadResult } from '../mcp/types'
 import type {
@@ -210,6 +211,12 @@ export interface ToolExecutionMiddlewareHooks {
     tool: Tool | undefined,
     args: unknown,
   ) => Promise<BeforeToolCallDecision>
+  /** Runs on the final checked args, just before the call runs. */
+  onGuardToolCall?: (
+    toolCall: ToolCall,
+    tool: Tool | undefined,
+    args: unknown,
+  ) => Promise<GuardToolCallDecision>
   onAfterToolCall?: (info: AfterToolCallInfo) => Promise<AfterToolCallDecision>
 }
 
@@ -547,7 +554,7 @@ export interface McpInputRequest {
   reason?: string
 }
 
-interface McpInputRequiredThrow {
+export interface McpInputRequiredThrow {
   name: 'MCPInputRequiredError'
   kind: 'form' | 'sampling'
   request: unknown
@@ -562,7 +569,7 @@ const RESERVED_INTERRUPT_REASONS = new Set([
 ])
 
 /** The reason a thrown input request names, when it can use it. */
-function inputRequestReason(reason: unknown) {
+export function inputRequestReason(reason: unknown) {
   return typeof reason === 'string' &&
     reason !== '' &&
     !RESERVED_INTERRUPT_REASONS.has(reason)
@@ -570,7 +577,9 @@ function inputRequestReason(reason: unknown) {
     : undefined
 }
 
-function isMcpInputRequired(value: unknown): value is McpInputRequiredThrow {
+export function isMcpInputRequired(
+  value: unknown,
+): value is McpInputRequiredThrow {
   if (typeof value !== 'object' || value === null) return false
   if (!('name' in value) || value.name !== 'MCPInputRequiredError') {
     return false
@@ -703,6 +712,31 @@ async function applyBeforeToolCallDecision(
   }
 
   const decision = await middlewareHooks.onBeforeToolCall(toolCall, tool, input)
+  return applyToolCallDecision(
+    decision,
+    toolCall,
+    tool,
+    input,
+    toolName,
+    middlewareHooks,
+    results,
+  )
+}
+
+/**
+ * Apply an onBeforeToolCall or onGuardToolCall decision.
+ * Returns the input to run with, or proceed false when the call was skipped
+ * (result already pushed). Throws MiddlewareAbortError on 'abort'.
+ */
+async function applyToolCallDecision(
+  decision: BeforeToolCallDecision | GuardToolCallDecision,
+  toolCall: ToolCall,
+  tool: Tool,
+  input: unknown,
+  toolName: string,
+  middlewareHooks: ToolExecutionMiddlewareHooks,
+  results: Array<ToolResult>,
+): Promise<{ proceed: true; input: unknown } | { proceed: false }> {
   if (!decision) {
     return { proceed: true, input }
   }
@@ -734,7 +768,9 @@ async function applyBeforeToolCallDecision(
     return { proceed: false }
   }
 
-  return { proceed: true, input: decision.args }
+  return decision.type === 'transformArgs'
+    ? { proceed: true, input: decision.args }
+    : { proceed: true, input }
 }
 
 /**
@@ -1283,6 +1319,27 @@ export async function* executeToolCalls<TContext = unknown>(
         approvalId: `approval_${toolCall.id}`,
       })
       continue
+    }
+
+    // The guard tier sees the final checked input. It always runs, also
+    // when an onBeforeToolCall decision came first, and cannot change it.
+    if (middlewareHooks?.onGuardToolCall) {
+      let guard: Awaited<ReturnType<typeof applyToolCallDecision>>
+      try {
+        guard = await applyToolCallDecision(
+          await middlewareHooks.onGuardToolCall(toolCall, tool, input),
+          toolCall,
+          tool,
+          input,
+          toolName,
+          middlewareHooks,
+          results,
+        )
+      } catch (error) {
+        failures.push(error)
+        break
+      }
+      if (!guard.proceed) continue
     }
 
     // Create a ToolExecutionContext for this tool call with event emission

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { defineAgent, toolDefinition } from '@tanstack/ai'
-import { memoryLogStore, memoryPersistence } from '@tanstack/ai-persistence'
-import { createHarnessHost, defineHarness } from '../src'
+import { EventType, defineAgent, toolDefinition } from '@tanstack/ai'
+import {
+  LogConflictError,
+  memoryLogStore,
+  memoryPersistence,
+} from '@tanstack/ai-persistence'
+import { createHarnessHost, defineHarness, logIdOf } from '../src'
+import { isRecord } from '../src/utils'
 import {
   after,
   gate,
@@ -11,23 +16,36 @@ import {
   text,
   toolCall,
   untilAborted,
+  wrapLogStore,
 } from './helpers'
 import type { AnyTextAdapter } from '@tanstack/ai'
-import type { LogStore } from '@tanstack/ai-persistence'
-import type { AnyHarness, HarnessSession, Operation } from '../src'
+import type { LogRecord } from '@tanstack/ai-persistence'
+import type {
+  AnyHarness,
+  HarnessPersistence,
+  HarnessSession,
+  Operation,
+  SessionEvent,
+} from '../src'
+
+// Coverage runs in CI are slow, so polled checks wait up to 5 s.
+const waitFor = <T>(
+  check: () => T | Promise<T>,
+  options?: { timeout?: number; interval?: number },
+) => vi.waitFor(check, { timeout: 5_000, ...options })
 
 const THREAD = 't1'
 const alice = { id: 'alice' }
 
-/** Open `harness` for alice on a host without a log. */
+/** Open `harness` for alice. */
 async function open<THarness extends AnyHarness>(
   harness: THarness,
-  persistence = memoryPersistence(),
+  persistence: HarnessPersistence = memoryPersistence(),
 ) {
   const host = createHarnessHost({ persistence })
   const session = await host.open(harness, {
     threadId: THREAD,
-    principal: alice,
+    user: alice,
   })
   return { host, session }
 }
@@ -77,8 +95,23 @@ function researching(replies: Parameters<typeof mockAdapter>[0]) {
 }
 
 describe('the thread of an agent run', () => {
-  it('keeps the messages of each background run in a thread of its own', async () => {
+  it('keeps the messages of each background run in a thread of its own, in the log of the root thread', async () => {
     const persistence = memoryPersistence()
+    const log = persistence.stores.log
+    // Every log that the host writes to.
+    const written = new Set<string>()
+    const tracked = {
+      ...persistence,
+      stores: {
+        ...persistence.stores,
+        log: wrapLogStore(log, {
+          append: (write) => {
+            written.add(write.logId)
+            return log.append(write)
+          },
+        }),
+      },
+    }
     const model = mockAdapter([() => text('Drafted.')])
     let thread = ''
     const drafter = defineAgent({
@@ -98,17 +131,141 @@ describe('the thread of an agent run', () => {
         adapter: mockAdapter([]).adapter,
         agents: [drafter],
       }),
-      persistence,
+      tracked,
     )
 
     await session.agents.drafter.start()
 
     expect(thread).toMatch(/^t1:drafter:in-/)
-    const saved = JSON.stringify(
-      await persistence.stores.messages.loadThread(thread),
-    )
+    // One log for the whole tree: the chain thread writes to the log of t1.
+    const root = logIdOf({ logId: THREAD })
+    expect([...written]).toEqual([root])
+    const chain = (await log.read({ logId: root }))
+      .map((entry) => entry.record)
+      .filter((record) => record.thread === thread)
+    const saved = JSON.stringify(chain)
     expect(saved).toContain('Draft it.')
     expect(saved).toContain('Drafted.')
+    expect(await log.read({ logId: logIdOf({ logId: thread }) })).toEqual([])
+    // The transcript of the root thread does not have the chain messages,
+    // only the note of the result.
+    expect(JSON.stringify(await session.transcript())).not.toContain(
+      'Draft it.',
+    )
+    await host.close()
+  })
+
+  it('gives a run that code starts a subagentRunId, and reads its transcript by it or by the run id', async () => {
+    const persistence = memoryPersistence()
+    const { host, session } = await open(
+      writing(mockAdapter([() => text('Drafted.')]).adapter),
+      persistence,
+    )
+
+    const run = session.agents.writer.start(undefined, { addResultNote: false })
+    expect(typeof run.subagentRunId).toBe('string')
+    await run
+
+    expect(session.agentRuns()).toMatchObject([
+      { runId: run.id, subagentRunId: run.subagentRunId },
+    ])
+    const contents = (messages: Array<{ content: unknown }>) =>
+      messages.map((message) => message.content)
+    const byRun = await session.agentTranscript({ runId: run.id })
+    expect(contents(byRun)).toContain('Drafted.')
+    expect(
+      await session.agentTranscript({ subagentRunId: run.subagentRunId }),
+    ).toEqual(byRun)
+    expect(await session.agentTranscript({ runId: 'unknown' })).toEqual([])
+    await host.close()
+
+    // A view of a host with no open session reads the log the same way.
+    const next = createHarnessHost({ persistence })
+    const view = await next.observe(writing(mockAdapter([]).adapter), {
+      threadId: THREAD,
+      user: alice,
+    })
+    expect(await view.agentTranscript({ runId: run.id })).toEqual(byRun)
+    expect(
+      await view.agentTranscript({ subagentRunId: run.subagentRunId }),
+    ).toEqual(byRun)
+    await next.close()
+  })
+
+  it('reads the transcript of a background child of the model by its subagentRunId', async () => {
+    const child = mockAdapter(() => text('Found it.'))
+    const scout = defineAgent({
+      name: 'scout',
+      description: 'Scouts',
+      run: (ctx) => ctx.chat({ adapter: child.adapter }),
+    })
+    const lead = mockAdapter([
+      () => toolCall('scout', { prompt: 'Look', background: true }, 'call-1'),
+      () => text('Started.'),
+      () => text('Noted.'),
+    ])
+    const { host, session } = await open(
+      defineHarness({
+        name: 'test/agent-runs',
+        adapter: lead.adapter,
+        subagents: { agents: [scout] },
+      }),
+    )
+
+    await session.send('Scout')
+    await waitFor(() =>
+      expect(session.agentRuns()[0]?.status).toBe('completed'),
+    )
+    const result = (await session.transcript()).find(
+      (message) => message.role === 'tool',
+    )
+    const { subagentRunId } = JSON.parse(String(result?.content))
+
+    expect(session.agentRuns()[0]?.subagentRunId).toBe(subagentRunId)
+    const messages = await session.agentTranscript({ subagentRunId })
+    expect(messages.map((message) => message.content)).toContain('Found it.')
+    await host.close()
+  })
+})
+
+describe('the receipt of an agent run', () => {
+  it('resolves when the run starts, with the run as its operation', async () => {
+    const { host, session } = await open(
+      writing(mockAdapter([() => text('Done.')]).adapter),
+    )
+
+    const run = session.agents.writer.start()
+
+    const receipt = await run.receipt
+    expect(receipt).toMatchObject({ status: 'accepted', operationId: run.id })
+    expect(receipt.inputId).toEqual(expect.any(String))
+    await run
+    await host.close()
+  })
+
+  it('resolves rejected for an input that the schema of the agent refuses', async () => {
+    const checked = defineAgent({
+      name: 'checked',
+      description: 'Needs a topic',
+      inputSchema: z.object({ topic: z.string() }),
+      run: (ctx) => ctx.chat({ adapter: mockAdapter([]).adapter }),
+    })
+    const { host, session } = await open(
+      defineHarness({
+        name: 'test/agent-runs',
+        adapter: mockAdapter([]).adapter,
+        agents: [checked],
+      }),
+    )
+
+    const run = session.agent('checked')?.start({ topic: 7 })
+    if (!run) throw new Error('No agent checked.')
+
+    expect(await run.receipt).toMatchObject({
+      status: 'rejected',
+      reason: 'invalid_input',
+    })
+    await expect(run).rejects.toThrow('Input validation failed')
     await host.close()
   })
 })
@@ -144,7 +301,7 @@ describe('follow-ups to an agent run', () => {
     ])
     const { host, session } = await open(writing(model.adapter))
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
 
     const receipt = await run.send('Add a title.', {
       mode: 'followUp',
@@ -174,44 +331,40 @@ describe('follow-ups to an agent run', () => {
     const model = mockAdapter([untilAborted(), () => text('Draft two.')])
     const { host, session } = await open(writing(model.adapter))
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
     const receipt = await run.send('Add a title.', { mode: 'followUp' })
     const followUp = session.operation(receipt.operationId ?? '')
 
-    await session.close()
+    await host.close()
 
     await expect(followUp).rejects.toThrow('Session closed.')
     expect(model.calls).toHaveLength(1)
-    await host.close()
   })
 
   it('cancels a queued follow-up when a log failure stops the session', async () => {
     const inner = memoryLogStore()
-    // This host does not see the other writer, like one in another process.
-    const log: LogStore = {
-      append: (batch) => inner.append(batch),
-      read: (threadId, options) => inner.read(threadId, options),
-      subscribe: () => () => {},
-    }
-    const { runs, metadata } = memoryPersistence().stores
+    // After `isBroken`, the store refuses each position.
+    let isBroken = false
+    const log = wrapLogStore(inner, {
+      append: (batch) =>
+        isBroken
+          ? Promise.reject(new LogConflictError(batch.logId, batch.seq))
+          : inner.append(batch),
+    })
+    const { metadata } = memoryPersistence().stores
     const model = mockAdapter([untilAborted(), () => text('Draft two.')])
     const host = createHarnessHost({
-      persistence: { stores: { log, runs, metadata } },
+      persistence: { stores: { log, metadata } },
     })
     const session = await host.open(writing(model.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
     const receipt = await run.send('Add a title.', { mode: 'followUp' })
     const followUp = session.operation(receipt.operationId ?? '')
-    const [last] = (await inner.read(THREAD)).slice(-1)
-    await inner.append({
-      threadId: THREAD,
-      seq: (last?.seq ?? 0) + 1,
-      records: [{ type: 'app.from-another-host' }],
-    })
+    isBroken = true
 
     await Promise.resolve(session.send('Next.')).catch(() => {})
 
@@ -228,16 +381,16 @@ describe('follow-ups to an agent run', () => {
     ])
     const { host, session } = await open(writing(model.adapter))
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
 
     const receipt = await run.send('Use a warmer tone.')
 
     expect(receipt).toMatchObject({ status: 'accepted', operationId: run.id })
     release.open()
     await run
-    await vi.waitFor(() => expect(model.calls).toHaveLength(2))
+    await waitFor(() => expect(model.calls).toHaveLength(2))
     expect(messageTexts(model.calls[1]).at(-1)).toBe('Use a warmer tone.')
-    expect(await session.settled(receipt.inputId)).toMatchObject({
+    expect(await session.settled({ inputId: receipt.inputId })).toMatchObject({
       outcome: 'completed',
     })
     await host.close()
@@ -264,7 +417,7 @@ describe('steers to an agent run', () => {
     ])
     const { host, session } = await open(harness)
     const run = session.agents.researcher.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
 
     const receipt = await run.send('Only primary sources.')
     release.open()
@@ -273,7 +426,7 @@ describe('steers to an agent run', () => {
     expect(receipt).toMatchObject({ status: 'accepted', operationId: run.id })
     expect(model.calls).toHaveLength(2)
     expect(messageTexts(model.calls[1]).at(-1)).toBe('Only primary sources.')
-    expect(await session.settled(receipt.inputId)).toMatchObject({
+    expect(await session.settled({ inputId: receipt.inputId })).toMatchObject({
       outcome: 'completed',
       operationId: run.id,
     })
@@ -288,15 +441,15 @@ describe('steers to an agent run', () => {
     ])
     const { host, session } = await open(harness)
     const run = session.agents.researcher.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
 
     const receipt = await session.send('Ignore the brief.', {
       to: run.id,
-      principal: { id: 'bob' },
+      user: { id: 'bob' },
     }).receipt
     release.open()
     await run
-    await vi.waitFor(() => expect(model.calls).toHaveLength(3))
+    await waitFor(() => expect(model.calls).toHaveLength(3))
 
     expect(receipt.status).toBe('queued')
     expect(receipt.operationId).not.toBe(run.id)
@@ -315,27 +468,33 @@ describe('agentRuns() and agentRun(id)', () => {
     ])
     const { host, session } = await open(writing(model.adapter))
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
     const queued = await run.send('Add a title.', { mode: 'followUp' })
 
     expect(session.agentRuns()).toEqual([
       {
         operationId: run.id,
+        runId: run.id,
+        kind: 'agent',
         agent: 'writer',
+        subagentRunId: run.subagentRunId,
         status: 'running',
-        principal: alice,
+        user: alice,
       },
       {
         operationId: queued.operationId,
+        runId: queued.operationId,
+        kind: 'agent',
         agent: 'writer',
+        subagentRunId: queued.operationId,
         status: 'queued',
-        principal: alice,
+        user: alice,
       },
     ])
     expect(session.agentRun(run.id)).toBe(run)
     expect(session.agentRun('op-agent-none')).toBeUndefined()
     release.open()
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(session.agentRuns().map((item) => item.status)).toEqual([
         'completed',
         'completed',
@@ -349,7 +508,6 @@ describe('agentRuns() and agentRun(id)', () => {
     const persistence = {
       stores: {
         log: memoryLogStore(),
-        runs: stores.runs,
         metadata: stores.metadata,
       },
     }
@@ -357,7 +515,7 @@ describe('agentRuns() and agentRun(id)', () => {
     const hostA = createHarnessHost({ persistence })
     const sessionA = await hostA.open(writing(first.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
     const run = sessionA.agents.writer.start()
     await run
@@ -367,15 +525,19 @@ describe('agentRuns() and agentRun(id)', () => {
     const hostB = createHarnessHost({ persistence })
     const sessionB = await hostB.open(writing(second.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
 
     expect(sessionB.agentRuns()).toEqual([
       {
         operationId: run.id,
+        runId: run.id,
+        kind: 'agent',
         agent: 'writer',
+        subagentRunId: run.subagentRunId,
         status: 'completed',
-        principal: alice,
+        user: alice,
+        result: 'Draft one.',
       },
     ])
     const again = sessionB.agentRun(run.id)
@@ -398,22 +560,22 @@ describe('agentRuns() and agentRun(id)', () => {
     ])
     const { host, session } = await open(harness)
     const run = session.agents.researcher.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
 
     const receipt = await session.send('Ignore the brief.', {
       to: run.id,
-      principal: { id: 'bob' },
+      user: { id: 'bob' },
     }).receipt
     release.open()
     await run
-    await vi.waitFor(() => expect(model.calls).toHaveLength(3))
+    await waitFor(() => expect(model.calls).toHaveLength(3))
 
     expect(session.agentRuns()).toMatchObject([
-      { operationId: run.id, agent: 'researcher', principal: alice },
+      { operationId: run.id, agent: 'researcher', user: alice },
       {
         operationId: receipt.operationId,
         agent: 'researcher',
-        principal: { id: 'bob' },
+        user: { id: 'bob' },
       },
     ])
     await host.close()
@@ -433,7 +595,7 @@ describe('agents that agent code starts', () => {
       name: 'lead',
       description: 'Starts a helper',
       run: async (ctx) => {
-        const child = ctx.harness.agents.start('helper')
+        const child = ctx.harness!.agents.start('helper')
         childId = child.id
         return await child
       },
@@ -452,18 +614,78 @@ describe('agents that agent code starts', () => {
     expect(session.agentRuns()).toEqual([
       {
         operationId: run.id,
+        runId: run.id,
+        kind: 'agent',
         agent: 'lead',
+        subagentRunId: run.subagentRunId,
         status: 'completed',
-        principal: alice,
+        user: alice,
+        result: 'helped',
       },
       {
         operationId: childId,
+        runId: childId,
+        kind: 'agent',
         agent: 'helper',
+        subagentRunId: childId,
         status: 'completed',
         parentRunId: run.id,
-        principal: alice,
+        user: alice,
+        result: 'helped',
       },
     ])
+    // The events of the lead and of its child, in one stream.
+    const events = []
+    for await (const entry of session.events()) {
+      events.push(entry)
+      const { event } = entry
+      const isLeadEnd =
+        entry.operationId === run.id &&
+        event.type === EventType.CUSTOM &&
+        event.name === 'harness.operation.finished'
+      if (isLeadEnd) break
+    }
+    const ofChild = events.filter((entry) => entry.operationId === childId)
+    const ofLead = events.filter((entry) => entry.operationId === run.id)
+    expect(ofChild.length).toBeGreaterThan(0)
+    expect(ofLead.length).toBeGreaterThan(0)
+    // The RUN_STARTED of a child run names its parent. The lead has none.
+    const startOf = (entries: Array<SessionEvent>) =>
+      entries.find((entry) => entry.event.type === EventType.RUN_STARTED)?.event
+    expect(startOf(ofChild)).toMatchObject({ parentRunId: run.id })
+    expect(startOf(ofLead)).not.toHaveProperty('parentRunId')
+    await host.close()
+  })
+
+  it('runs a child and a group of children with run and group', async () => {
+    const lead = defineAgent({
+      name: 'lead',
+      description: 'Runs helpers',
+      run: async (ctx) => {
+        const one = await ctx.harness!.agents.run(helper)
+        const [two, three] = await ctx.harness!.agents.group({}, (g) => [
+          g.start(helper),
+          g.start('helper'),
+        ])
+        return [one, two, three].join(' ')
+      },
+    })
+    const { host, session } = await open(
+      defineHarness({
+        name: 'test/agent-runs',
+        adapter: mockAdapter([]).adapter,
+        agents: [lead, helper],
+      }),
+    )
+
+    const run = session.agents.lead.start()
+
+    await expect(run).resolves.toBe('helped helped helped')
+    const children = session
+      .agentRuns()
+      .filter((item) => item.agent === 'helper')
+    expect(children).toHaveLength(3)
+    for (const child of children) expect(child.parentRunId).toBe(run.id)
     await host.close()
   })
 
@@ -473,7 +695,7 @@ describe('agents that agent code starts', () => {
       description: 'Starts a helper',
       run: async (ctx) => {
         try {
-          ctx.harness.agents.start('helper')
+          ctx.harness!.agents.start('helper')
           return 'started'
         } catch (error) {
           return String(error)
@@ -516,7 +738,7 @@ describe('agents that agent code starts', () => {
       name: 'lead',
       description: 'Starts a waiter, then waits',
       run: (ctx) => {
-        void ctx.harness.agents.start('waiter')
+        void ctx.harness!.agents.start('waiter')
         return waitForAbort('lead', ctx.abortSignal)
       },
     })
@@ -528,12 +750,12 @@ describe('agents that agent code starts', () => {
       }),
     )
     const run = session.agents.lead.start()
-    await vi.waitFor(() => expect(listening).toEqual(['lead', 'waiter']))
+    await waitFor(() => expect(listening).toEqual(['lead', 'waiter']))
 
     await run.cancel()
 
-    await vi.waitFor(() => expect(stopped).toEqual(['waiter', 'lead']))
-    await vi.waitFor(() =>
+    await waitFor(() => expect(stopped).toEqual(['waiter', 'lead']))
+    await waitFor(() =>
       expect(session.agentRuns().map((item) => item.status)).toEqual([
         'cancelled',
         'cancelled',
@@ -547,10 +769,10 @@ describe('agents that agent code starts', () => {
     const model = mockAdapter([after(release.opened, 'Draft one.')])
     const { host, session } = await open(writing(model.adapter))
     const run = session.agents.writer.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
     const queued = await run.send('Add a title.', { mode: 'followUp' })
 
-    const cancelled = await session.cancel(queued.operationId)
+    const cancelled = await session.cancel({ operationId: queued.operationId })
     release.open()
     await run
 
@@ -558,7 +780,7 @@ describe('agents that agent code starts', () => {
       status: 'accepted',
       operationId: queued.operationId,
     })
-    expect(await session.settled(queued.inputId)).toMatchObject({
+    expect(await session.settled({ inputId: queued.inputId })).toMatchObject({
       outcome: 'aborted',
     })
     expect(model.calls).toHaveLength(1)
@@ -571,25 +793,26 @@ describe('agents that agent code starts', () => {
 
 /**
  * Two hosts on one durable store. `stop` makes host A stop during `run`:
- * its log refuses writes, and the run's lease expires.
+ * its log refuses writes, so it gives the log up.
  */
 function durable() {
   const stores = memoryPersistence().stores
   const log = memoryLogStore()
   const persistence = {
-    stores: { log, runs: stores.runs, metadata: stores.metadata },
+    stores: { log, metadata: stores.metadata },
   }
   const stop = async (
-    session: Pick<HarnessSession, 'append'>,
+    session: Pick<HarnessSession, 'appendRecords'>,
     run: Operation<unknown>,
   ) => {
     const refuse = vi
       .spyOn(log, 'append')
       .mockRejectedValue(new Error('the host is gone'))
-    await expect(session.append([{ type: 'app.ping' }])).rejects.toThrow()
+    await expect(
+      session.appendRecords({ records: [{ type: 'app.ping' }] }),
+    ).rejects.toThrow()
     await expect(run).rejects.toThrow()
     refuse.mockRestore()
-    await stores.runs.update(run.id, { leaseExpiresAt: Date.now() - 1000 })
   }
   return { persistence, stop }
 }
@@ -601,10 +824,12 @@ describe('messages to an agent run after its host stopped', () => {
     const hostA = createHarnessHost({ persistence })
     const sessionA = await hostA.open(writing(first.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
-    const run = sessionA.agents.writer.start(undefined, { resume: true })
-    await vi.waitFor(() => expect(first.calls).toHaveLength(1))
+    const run = sessionA.agents.writer.start(undefined, {
+      runAgainAfterCrash: true,
+    })
+    await waitFor(() => expect(first.calls).toHaveLength(1))
     await run.send('Cite the source.', { inputId: 'steer-1' })
     await stop(sessionA, run)
 
@@ -612,10 +837,10 @@ describe('messages to an agent run after its host stopped', () => {
     const hostB = createHarnessHost({ persistence })
     const sessionB = await hostB.open(writing(next.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
 
-    expect(await sessionB.settled('steer-1')).toMatchObject({
+    expect(await sessionB.settled({ inputId: 'steer-1' })).toMatchObject({
       outcome: 'completed',
     })
     expect(messageTexts(next.calls[0])).toContain('Cite the source.')
@@ -628,10 +853,10 @@ describe('messages to an agent run after its host stopped', () => {
     const hostA = createHarnessHost({ persistence })
     const sessionA = await hostA.open(writing(first.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
     const run = sessionA.agents.writer.start()
-    await vi.waitFor(() => expect(first.calls).toHaveLength(1))
+    await waitFor(() => expect(first.calls).toHaveLength(1))
     await run.send('Cite the source.', { inputId: 'steer-1' })
     await stop(sessionA, run)
 
@@ -639,10 +864,10 @@ describe('messages to an agent run after its host stopped', () => {
     const hostB = createHarnessHost({ persistence })
     const sessionB = await hostB.open(writing(next.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
 
-    expect(await sessionB.settled('steer-1')).toMatchObject({
+    expect(await sessionB.settled({ inputId: 'steer-1' })).toMatchObject({
       outcome: 'aborted',
     })
     expect(next.calls).toHaveLength(0)
@@ -658,22 +883,22 @@ describe('messages to an agent run after its host stopped', () => {
     const hostA = createHarnessHost({ persistence })
     const sessionA = await hostA.open(harness, {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
     const run = sessionA.agents.researcher.start()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(1))
+    await waitFor(() => expect(model.calls).toHaveLength(1))
     await run.send('Only primary sources.', { inputId: 'steer-2' })
     release.open()
-    await vi.waitFor(() => expect(model.calls).toHaveLength(2))
+    await waitFor(() => expect(model.calls).toHaveLength(2))
     await stop(sessionA, run)
 
     const hostB = createHarnessHost({ persistence })
     const sessionB = await hostB.open(harness, {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
 
-    expect(await sessionB.settled('steer-2')).toMatchObject({
+    expect(await sessionB.settled({ inputId: 'steer-2' })).toMatchObject({
       outcome: 'failed',
     })
     await hostB.close()
@@ -685,15 +910,17 @@ describe('messages to an agent run after its host stopped', () => {
     const hostA = createHarnessHost({ persistence })
     const sessionA = await hostA.open(writing(first.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
-    const run = sessionA.agents.writer.start(undefined, { resume: true })
+    const run = sessionA.agents.writer.start(undefined, {
+      runAgainAfterCrash: true,
+    })
     await run
     const receipt = await run.send('Add a title.', {
       mode: 'followUp',
       inputId: 'follow-1',
     })
-    await vi.waitFor(() => expect(first.calls).toHaveLength(2))
+    await waitFor(() => expect(first.calls).toHaveLength(2))
     const followUp = sessionA.agentRun(receipt.operationId ?? '')
     if (!followUp) throw new Error('No follow-up run.')
     await stop(sessionA, followUp)
@@ -702,10 +929,10 @@ describe('messages to an agent run after its host stopped', () => {
     const hostB = createHarnessHost({ persistence })
     const sessionB = await hostB.open(writing(next.adapter), {
       threadId: THREAD,
-      principal: alice,
+      user: alice,
     })
 
-    expect(await sessionB.settled('follow-1')).toMatchObject({
+    expect(await sessionB.settled({ inputId: 'follow-1' })).toMatchObject({
       outcome: 'completed',
     })
     const texts = messageTexts(next.calls[0])
@@ -715,27 +942,30 @@ describe('messages to an agent run after its host stopped', () => {
   })
 })
 
-describe('an agent run whose store fails', () => {
-  it('fails the run when the run store cannot record its end', async () => {
-    const persistence = memoryPersistence()
-    const { runs } = persistence.stores
-    const update = runs.update.bind(runs)
+describe('an agent run whose log write fails', () => {
+  it('fails the run when the log cannot record its end', async () => {
+    const inner = memoryLogStore()
     let agentRunId = ''
     // Only the end record of the agent run itself fails.
-    vi.spyOn(runs, 'update').mockImplementation(async (runId, patch) => {
-      if (runId === agentRunId && patch.status === 'completed') {
-        throw new Error('runs down')
-      }
-      return update(runId, patch)
+    const isAgentEnd = (record: LogRecord) =>
+      record.type === 'harness.run.update' &&
+      record.runId === agentRunId &&
+      isRecord(record.patch) &&
+      record.patch.status === 'completed'
+    const log = wrapLogStore(inner, {
+      append: (batch) =>
+        batch.records.some(isAgentEnd)
+          ? Promise.reject(new Error('log down'))
+          : inner.append(batch),
     })
     const { session, host } = await open(
       writing(mockAdapter([() => text('Done.')]).adapter),
-      persistence,
+      { stores: { log } },
     )
 
     const run = session.agents.writer.start(undefined)
     agentRunId = run.id
-    await expect(run).rejects.toThrow('runs down')
+    await expect(run).rejects.toThrow('log down')
     expect(run.status()).toBe('failed')
     await host.close()
   })

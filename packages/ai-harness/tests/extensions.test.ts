@@ -12,8 +12,14 @@ import {
   defineHarness,
   definePlugin,
 } from '../src'
-import { mockAdapter, text } from './helpers'
+import { mockAdapter, questionsOf, storedThreadState, text } from './helpers'
 import type { StreamChunk } from '@tanstack/ai'
+
+// Coverage runs in CI are slow, so polled checks wait up to 5 s.
+const waitFor = <T>(
+  check: () => T | Promise<T>,
+  options?: { timeout?: number; interval?: number },
+) => vi.waitFor(check, { timeout: 5_000, ...options })
 
 describe('extension points', () => {
   it('lets one plugin read what others contribute, in any order', async () => {
@@ -49,9 +55,11 @@ describe('extension points', () => {
         adapter,
         plugins: () => [reader, writerA, writerB],
       }),
-      { threadId: 't' },
+      {
+        threadId: 't',
+      },
     )
-    await session.command('rules')
+    await session.runCommand({ name: 'rules' })
     expect(read).toEqual([{ tool: 'write_file' }, { tool: 'bash' }])
     expect(session.inspect().extensionPoints['test/rules']).toEqual([
       'test/a',
@@ -99,10 +107,12 @@ describe('extension points', () => {
         adapter,
         plugins: () => [reader, writer],
       }),
-      { threadId: 't' },
+      {
+        threadId: 't',
+      },
     )
 
-    await session.command('rules')
+    await session.runCommand({ name: 'rules' })
 
     expect(seen).toEqual({
       has: true,
@@ -155,7 +165,9 @@ describe('events and state', () => {
         adapter,
         plugins: () => [todos, listener],
       }),
-      { threadId: 't' },
+      {
+        threadId: 't',
+      },
     )
 
     const seen: Array<StreamChunk> = []
@@ -165,19 +177,24 @@ describe('events and state', () => {
         seen.push(entry.event)
     })()
 
-    expect(await session.command('add', { text: 'milk' })).toBe(1)
-    expect(await session.command('add', { text: 'eggs' })).toBe(2)
-    await expect(session.command('add', { text: 3 })).rejects.toThrow(
-      'Input validation failed',
-    )
-    expect(heard).toEqual(['milk', 'eggs'])
     expect(
-      await persistence.stores.metadata.get('plugin:test/todos', 't'),
-    ).toEqual({
+      await session.runCommand({ name: 'add', input: { text: 'milk' } }),
+    ).toBe(1)
+    expect(
+      await session.runCommand({ name: 'add', input: { text: 'eggs' } }),
+    ).toBe(2)
+    await expect(
+      session.runCommand({ name: 'add', input: { text: 3 } }),
+    ).rejects.toThrow('Input validation failed')
+    expect(heard).toEqual(['milk', 'eggs'])
+    const stored = await storedThreadState(persistence.stores.log, {
+      threadId: 't',
+    })
+    expect(stored.plugins.get('test/todos')).toEqual({
       items: ['milk', 'eggs'],
     })
 
-    await vi.waitFor(() =>
+    await waitFor(() =>
       expect(
         seen.some((event) => event.type === EventType.STATE_SNAPSHOT),
       ).toBe(true),
@@ -231,23 +248,23 @@ describe('session config', () => {
 
     await session.send('one')
     expect(
-      await session.setConfig({ key: 'thinking', value: 'extreme' }),
+      await session.setPluginSetting({ key: 'thinking', value: 'extreme' }),
     ).toMatchObject({
       status: 'rejected',
     })
-    expect(await session.setConfig({ key: 'missing', value: 1 })).toMatchObject(
-      {
-        reason: 'unknown_config',
-      },
-    )
     expect(
-      await session.setConfig({ key: 'thinking', value: 'high' }),
+      await session.setPluginSetting({ key: 'missing', value: 1 }),
+    ).toMatchObject({
+      reason: 'unknown_config',
+    })
+    expect(
+      await session.setPluginSetting({ key: 'thinking', value: 'high' }),
     ).toMatchObject({
       status: 'accepted',
     })
     await session.send('two')
     expect(seenThinking).toEqual(['low', 'high'])
-    expect(session.config().thinking).toMatchObject({
+    expect(session.pluginSettings().thinking).toMatchObject({
       value: 'high',
       owner: 'test/thinking',
     })
@@ -257,7 +274,7 @@ describe('session config', () => {
     const again = await createHarnessHost({ persistence }).open(harness, {
       threadId: 't',
     })
-    expect(again.config().thinking?.value).toBe('high')
+    expect(again.pluginSettings().thinking?.value).toBe('high')
     await again.close()
   })
 })
@@ -271,7 +288,8 @@ describe('commands and questions', () => {
           deploy: defineCommand({
             description: 'Deploy after a confirmation',
             run: async (_input, ctx) => {
-              const sure = await ctx.session.ask({
+              const sure = await ctx.step.ask({
+                name: 'sure',
                 message: 'Deploy to production?',
                 schema: z.boolean(),
               })
@@ -284,15 +302,19 @@ describe('commands and questions', () => {
     const { adapter } = mockAdapter([])
     const host = createHarnessHost({ persistence: memoryPersistence() })
     const session = await host.open(
-      defineHarness({ name: 'test/ask', adapter, plugins: () => [deploy] }),
-      { threadId: 't' },
+      defineHarness({
+        name: 'test/ask',
+        adapter,
+        plugins: () => [deploy],
+      }),
+      {
+        threadId: 't',
+      },
     )
 
-    const running = session.command('deploy')
-    await vi.waitFor(() =>
-      expect(session.snapshot().pendingQuestions).toHaveLength(1),
-    )
-    const [question] = session.snapshot().pendingQuestions
+    const running = session.runCommand({ name: 'deploy' })
+    await waitFor(() => expect(questionsOf(session.snapshot())).toHaveLength(1))
+    const [question] = questionsOf(session.snapshot())
     expect(question?.message).toBe('Deploy to production?')
     expect(
       await session.answer({
@@ -360,8 +382,8 @@ describe('adapter override and credentials', () => {
         commands: {
           token: defineCommand({
             description: 'Read the GitHub token',
-            run: async () => {
-              const credential = await ctx.credentials.require('github')
+            run: async (_input, { credentials }) => {
+              const credential = await credentials.require('github')
               token =
                 credential.type === 'oauth'
                   ? credential.accessToken
@@ -379,17 +401,20 @@ describe('adapter override and credentials', () => {
         adapter: main.adapter,
         plugins: () => [picker],
       }),
-      { threadId: 't', principal: { id: 'user-1' } },
+      {
+        threadId: 't',
+        user: { id: 'user-1' },
+      },
     )
 
-    await session.setConfig({ key: 'model', value: 'other' })
+    await session.setPluginSetting({ key: 'model', value: 'other' })
     expect(await session.send('hi')).toEqual({
       text: 'from other',
       media: [],
     })
     expect(main.calls).toHaveLength(0)
 
-    await expect(session.command('token')).rejects.toThrow(
+    await expect(session.runCommand({ name: 'token' })).rejects.toThrow(
       'Sign in to github first',
     )
     expect(token).toBeUndefined()
