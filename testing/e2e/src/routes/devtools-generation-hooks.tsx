@@ -56,12 +56,10 @@ function DevtoolsGenerationHooksRoute() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          data: {
-            ...sharedBody,
-            ...input,
-            provider: 'elevenlabs',
-            feature: 'audio-gen',
-          },
+          ...sharedBody,
+          ...input,
+          provider: 'elevenlabs',
+          feature: 'audio-gen',
         }),
       })
       const payload: { result: AudioGenerationResult } = await response.json()
