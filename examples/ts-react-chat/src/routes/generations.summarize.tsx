@@ -46,7 +46,8 @@ function StreamingSummarize() {
   const [streamingText, setStreamingText] = useState('')
 
   // The connect adapter merges `body` into every request payload; the API
-  // route reads `model` from `body.data` to pick the openaiSummarize variant.
+  // route reads `model` from `body.forwardedProps` to pick the openaiSummarize
+  // variant.
   const hookReturn = useSummarize({
     threadId: 'summarize:streaming',
     connection: fetchServerSentEvents('/api/summarize'),

@@ -38,7 +38,7 @@ export const Route = createFileRoute('/api/skills-chat')({
         const abortController = new AbortController()
         const body = await request.json()
         const messages = body.messages
-        const data = body.data || {}
+        const data = body.forwardedProps || {}
 
         const provider: Provider = data.provider || 'openai'
         const model: string | undefined = data.model

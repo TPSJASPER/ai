@@ -161,7 +161,7 @@ export const Route = createFileRoute('/api/chat')({
 
         const body = await request.json()
         const messages = body.messages
-        const data = body.data || {}
+        const data = body.forwardedProps || {}
 
         // Extract provider, model, and traceId from data
         const provider: Provider = data.provider || 'openai'

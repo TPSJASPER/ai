@@ -57,7 +57,7 @@ export const Route = createFileRoute('/api/structured')({
       POST: async ({ request }) => {
         const body = await request.json()
         const { recipeName, mode = 'structured' } = body
-        const data = body.data || {}
+        const data = body.forwardedProps || {}
         const provider: Provider = data.provider || body.provider || 'openai'
         // Don't set a global default - let each adapter use its own default model
         const model: string | undefined = data.model || body.model

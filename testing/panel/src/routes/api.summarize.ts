@@ -27,7 +27,7 @@ export const Route = createFileRoute('/api/summarize')({
           style = 'concise',
           stream = false,
         } = body
-        const data = body.data || {}
+        const data = body.forwardedProps || {}
         const provider: Provider = data.provider || body.provider || 'openai'
         // Don't set a global default - let each adapter use its own default model
         const model: string | undefined = data.model || body.model

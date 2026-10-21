@@ -13,7 +13,7 @@ export const Route = createFileRoute('/api/image')({
       POST: async ({ request }) => {
         const body = await request.json()
         const { prompt, numberOfImages = 1, size = '1024x1024' } = body
-        const data = body.data || {}
+        const data = body.forwardedProps || {}
         const provider: Provider = data.provider || body.provider || 'openai'
 
         const defaultModels: Record<Provider, string> = {

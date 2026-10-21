@@ -60,11 +60,12 @@ export const Route = createFileRoute('/api/transcribe')({
           })
         }
 
-        const rawData = (body as { data?: unknown } | null)?.data
+        const rawData = (body as { forwardedProps?: unknown } | null)
+          ?.forwardedProps
         if (rawData == null) {
           return jsonError(400, {
-            error: 'missing_data',
-            message: 'Request body must include a `data` field',
+            error: 'missing_forwarded_props',
+            message: 'Request body must include a `forwardedProps` field',
           })
         }
 

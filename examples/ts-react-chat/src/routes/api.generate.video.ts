@@ -38,10 +38,10 @@ export const Route = createFileRoute('/api/generate/video')({
     handlers: {
       POST: async ({ request }) => {
         const body = await request.json()
-        // Adapter arguments come straight off the envelope's `data`: `size` and
-        // `model` are adapter-specific unions that the provider-agnostic video
-        // input widens to `string`.
-        const { prompt, size, duration, model } = body.data
+        // Adapter arguments come straight off the envelope's
+        // `forwardedProps`: `size` and `model` are adapter-specific unions
+        // that the provider-agnostic video input widens to `string`.
+        const { prompt, size, duration, model } = body.forwardedProps
         const { threadId, runId } = generationParamsFromBody('video', body)
 
         // Persistence needs the scope named. It is a type error to wire the
