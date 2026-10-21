@@ -555,11 +555,7 @@ interface McpInputRequiredThrow {
 }
 
 /** Reasons that clients read as another kind of interrupt. */
-const RESERVED_INTERRUPT_REASONS = new Set([
-  'approval_required',
-  'client_tool_input',
-  'tanstack:client_tool_execution',
-])
+const RESERVED_INTERRUPT_REASONS = new Set(['tanstack:client_tool_execution'])
 
 /** The reason a thrown input request names, when it can use it. */
 function inputRequestReason(reason: unknown) {

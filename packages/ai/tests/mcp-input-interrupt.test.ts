@@ -127,10 +127,20 @@ describe('MCP input interrupt', () => {
     })
   })
 
+  it.each(['approval_required', 'client_tool_input'])(
+    'keeps the 0.x reason %j as a plain reason',
+    async (reason) => {
+      const finished = await runInputRequiredChat('form', {}, reason)
+
+      expect(finished?.outcome).toMatchObject({
+        type: 'interrupt',
+        interrupts: [{ id: 'mcp_input_call_1', reason }],
+      })
+    },
+  )
+
   it.each([
     '',
-    'approval_required',
-    'client_tool_input',
     'tanstack:client_tool_execution',
     0,
     { reason: 'auth_required' },
