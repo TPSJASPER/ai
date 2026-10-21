@@ -81,44 +81,36 @@ The tool-call parts land on the assistant message exactly as they would in a nor
 
 ## Server tools that need approval
 
-A server tool registered with `needsApproval: true` doesn't execute automatically — the agent loop pauses, the queued tool-call lands on the assistant message as a `ToolCallPart` with `state === "approval-requested"`, and the loop waits for you to call `addToolApprovalResponse({ id, approved })` from the hook return. The structured-output stream only takes over once approval is granted (or denied and the loop resumes).
+A server tool registered with `needsApproval: true` does not run on its own. The agent loop pauses, and the run waits on a `tool-approval` item in the `interrupts` array of the hook. Call `resolveInterrupt(approved)` on that item. The structured-output stream starts only after the user approves (or denies and the loop resumes).
 
 ```tsx ignore
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
 import { RecommendationSchema } from "./api/recommend";
 import { sendEmail } from "./tools";
 
-const { messages, sendMessage, partial, final, addToolApprovalResponse } =
-  useChat({
-    connection: fetchServerSentEvents("/api/recommend"),
-    outputSchema: RecommendationSchema,
-    tools: [sendEmail], // server tool with needsApproval: true
-  });
+const { messages, sendMessage, partial, final, interrupts } = useChat({
+  connection: fetchServerSentEvents("/api/recommend"),
+  outputSchema: RecommendationSchema,
+  tools: [sendEmail], // server tool with needsApproval: true
+});
 
 const last = messages.at(-1);
 
 return (
   <>
+    {/* Surface pending approvals from `interrupts`. */}
+    {interrupts.map((interrupt) =>
+      interrupt.kind === "tool-approval" ? (
+        <ApprovalPrompt
+          key={interrupt.id}
+          toolName={interrupt.toolName}
+          onApprove={() => interrupt.resolveInterrupt(true)}
+          onDeny={() => interrupt.resolveInterrupt(false)}
+        />
+      ) : null,
+    )}
+
     {last?.parts.map((part, i) => {
-      // Surface approval prompts inline.
-      if (
-        part.type === "tool-call" &&
-        part.state === "approval-requested" &&
-        part.approval
-      ) {
-        return (
-          <ApprovalPrompt
-            key={i}
-            part={part}
-            onApprove={() =>
-              addToolApprovalResponse({ id: part.approval!.id, approved: true })
-            }
-            onDeny={() =>
-              addToolApprovalResponse({ id: part.approval!.id, approved: false })
-            }
-          />
-        );
-      }
       if (part.type === "thinking") return <ReasoningView key={i} text={part.content} />;
       if (part.type === "tool-call") return <ToolCallView key={i} part={part} />;
       return null;

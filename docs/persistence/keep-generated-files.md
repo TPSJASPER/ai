@@ -240,10 +240,8 @@ Two things worth knowing:
 
 **The resolved key is recorded on the artifact.** Once the path is arbitrary it
 can no longer be recomputed from the record, so it is stored as
-`ArtifactRecord.blobKey` and reads resolve through it. Records written before
-this existed fall back to the default convention, so adding `storageKey` to an
-app with existing artifacts does not orphan them. It does mean the default
-convention can never be changed retroactively.
+`ArtifactRecord.blobKey` and reads resolve through it. Every record must have
+`blobKey`. A record without it does not load.
 
 **Returning a non-unique key overwrites.** Include `artifactId`, or something
 equally unique, unless overwriting is what you want.

@@ -165,7 +165,7 @@ Options accepted by `streamText` as of AI SDK v6, and where each lives in TanSta
 | `onFinish` | `middleware.onFinish` | Terminal hook |
 | `onAbort` | `middleware.onAbort` | Terminal hook |
 | `output: Output.object({ schema })` | `outputSchema` | See [Structured Output](#structured-output) |
-| — | `conversationId` / `threadId` / `runId` | TanStack-only, for correlating requests across your system and AG-UI |
+| (none) | `threadId` / `runId` | TanStack-only, for correlating requests across your system and AG-UI |
 
 ### `streamText` result → TanStack AI equivalents
 
@@ -390,7 +390,7 @@ Vercel AI SDK v5+ already moved away from the magic `input`/`handleInputChange`/
 | `stop()` | `stop()` | Cancel the in-flight stream |
 | `setMessages(messages)` | `setMessages(messages)` | Direct message replacement |
 | `addToolOutput({ tool, toolCallId, output })` (v6; was `addToolResult` in v5) | `addToolResult({ tool, toolCallId, output })` | Resolve a client-side tool call |
-| `addToolApprovalResponse({ id, approved })` (v6) | `addToolApprovalResponse({ id, approved })` | First-class user-approval flow for tools |
+| `addToolApprovalResponse({ id, approved })` (v6) | `interrupt.resolveInterrupt(approved)` on a `tool-approval` item from `interrupts` | First-class user-approval flow for tools |
 | `m.parts` (typed union) | `message.parts` (typed union) | Both render via structured parts |
 
 ### Message Structure
@@ -651,7 +651,7 @@ const { messages } = useChat({
 
 ### Tool Approval Flow
 
-Both libraries expose first-class human-in-the-loop approval. The shapes are similar — a tool opts in with `needsApproval: true`, the client renders UI on an `approval-requested` state, and you call `addToolApprovalResponse` with the approval ID.
+Both libraries expose first-class human-in-the-loop approval. In both, a tool opts in with `needsApproval: true`. In TanStack AI, the pending approval shows up in the hook's `interrupts` array. Call `resolveInterrupt` on that item with the decision.
 
 #### Before (Vercel AI SDK v6)
 
@@ -687,39 +687,25 @@ const bookFlightDef = toolDefinition({
   needsApproval: true, // Request user approval
 })
 
-// In component
-const { messages, addToolApprovalResponse } = useChat({
+// In component. Pass the shared definition so the approval item is typed.
+const { messages, interrupts } = useChat({
   connection: fetchServerSentEvents('/api/chat'),
+  tools: [bookFlightDef],
 })
 
-// Render approval UI
-{message.parts.map((part, idx) => {
-  if (
-    part.type === 'tool-call' &&
-    part.state === 'approval-requested' &&
-    part.approval
-  ) {
-    return (
-      <div key={idx}>
-        <p>Approve booking flight {part.input?.flightId}?</p>
-        <button
-          onClick={() => addToolApprovalResponse({ id: part.approval!.id, approved: true })}
-        >
-          Approve
-        </button>
-        <button
-          onClick={() => addToolApprovalResponse({ id: part.approval!.id, approved: false })}
-        >
-          Deny
-        </button>
-      </div>
-    )
-  }
-  return null
-})}
+// Render approval UI from `interrupts`
+{interrupts.map((interrupt) =>
+  interrupt.kind === 'tool-approval' ? (
+    <div key={interrupt.id}>
+      <p>Approve booking flight {interrupt.originalArgs.flightId}?</p>
+      <button onClick={() => interrupt.resolveInterrupt(true)}>Approve</button>
+      <button onClick={() => interrupt.resolveInterrupt(false)}>Deny</button>
+    </div>
+  ) : null,
+)}
 ```
 
-> `part.input` is the **parsed** tool input (typed when you pass a typed `tools` array). The raw streaming JSON is available as `part.arguments` if you need to show progress before input parsing completes.
+> `interrupt.originalArgs` is the **parsed** tool input. It is typed when you pass the tool in `tools`.
 
 ## Structured Output
 

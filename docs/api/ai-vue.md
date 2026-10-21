@@ -126,7 +126,7 @@ const chatOptions = createChatClientOptions({
 // Fully typed messages!
 type ChatMessages = InferChatMessages<typeof chatOptions>;
 
-const { messages, sendMessage, isLoading, error, addToolApprovalResponse } =
+const { messages, sendMessage, isLoading, error, interrupts } =
   useChat(chatOptions);
 ```
 
@@ -139,9 +139,8 @@ Extends `ChatClientOptions` from `@tanstack/ai-client` (minus internal state cal
 - `initialMessages?` - Initial messages array
 - `threadId?` - The only identity for this chat. Required when persistence is on. If omitted, minted after mount.
 - `forwardedProps?` - Arbitrary client-controlled JSON forwarded to the server in the AG-UI `RunAgentInput.forwardedProps` field (reactive -- changes are synced automatically via `watch`)
-- `body?` - **Deprecated.** Use `forwardedProps` instead. Still works for backward compatibility; values are merged into `forwardedProps` on the wire (reactive)
 - `byok?` - Optional BYOK keyring from `defineByok`. On each send the client prepares the resolved provider and stamps `x-byok-*` request headers. Keys never go in the body
-- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps`, `body`, and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
+- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps` and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
 - `context?` - Typed client-local runtime context passed to client tool implementations (reactive). This value is not serialized to the server
 - `live?` - Enable live subscription mode (auto-subscribes/unsubscribes)
 - `onResponse?` - Callback when response is received
@@ -161,6 +160,7 @@ import type { DeepReadonly, ShallowRef } from "vue";
 import type { UIMessage } from "@tanstack/ai-vue";
 import type { ModelMessage } from "@tanstack/ai/client";
 import type {
+  BoundInterrupts,
   MultimodalContent,
   ChatClientState,
   ConnectionStatus,
@@ -181,10 +181,7 @@ interface UseChatReturn {
     state?: "output-available" | "output-error";
     errorText?: string;
   }) => Promise<void>;
-  addToolApprovalResponse: (response: {
-    id: string;
-    approved: boolean;
-  }) => Promise<void>;
+  interrupts: Readonly<ShallowRef<BoundInterrupts>>;
   reload: () => Promise<void>;
   stop: () => void;
   isLoading: DeepReadonly<ShallowRef<boolean>>;
@@ -277,49 +274,35 @@ const handleSubmit = () => {
 
 ## Example: Tool Approval
 
+Pending approvals show up in `interrupts`. Pass the shared tool definition to `tools` so each item is typed. Then call `resolveInterrupt` with the decision.
+
 ```vue
 <script setup lang="ts">
+import { toolDefinition } from "@tanstack/ai";
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-vue";
+import { z } from "zod";
 
-const { messages, sendMessage, addToolApprovalResponse } = useChat({
+const deleteFileTool = toolDefinition({
+  name: "delete_file",
+  description: "Delete a file",
+  needsApproval: true,
+  inputSchema: z.object({ path: z.string() }),
+});
+
+const { interrupts } = useChat({
   connection: fetchServerSentEvents("/api/chat"),
+  tools: [deleteFileTool],
 });
 </script>
 
 <template>
   <div>
-    <template v-for="message in messages" :key="message.id">
-      <template v-for="part in message.parts" :key="part.id">
-        <div
-          v-if="
-            part.type === 'tool-call' &&
-            part.state === 'approval-requested' &&
-            part.approval
-          "
-        >
-          <p>Approve: {{ part.name }}</p>
-          <button
-            @click="
-              addToolApprovalResponse({
-                id: part.approval!.id,
-                approved: true,
-              })
-            "
-          >
-            Approve
-          </button>
-          <button
-            @click="
-              addToolApprovalResponse({
-                id: part.approval!.id,
-                approved: false,
-              })
-            "
-          >
-            Deny
-          </button>
-        </div>
-      </template>
+    <template v-for="interrupt in interrupts" :key="interrupt.id">
+      <div v-if="interrupt.kind === 'tool-approval'">
+        <p>Approve: {{ interrupt.toolName }}</p>
+        <button @click="interrupt.resolveInterrupt(true)">Approve</button>
+        <button @click="interrupt.resolveInterrupt(false)">Deny</button>
+      </div>
     </template>
   </div>
 </template>

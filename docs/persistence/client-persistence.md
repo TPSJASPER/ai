@@ -337,7 +337,7 @@ const persistence: ChatClientPersistence = {
     const raw = localStorage.getItem(id)
     if (raw === null) return null
     const parsed: unknown = JSON.parse(raw)
-    // A bare array is the legacy messages-only format, still accepted.
+    // Wrap a bare message array saved by a 0.x app.
     if (Array.isArray(parsed)) return { messages: parsed }
     return isPersistedState(parsed) ? parsed : null
   },

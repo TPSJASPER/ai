@@ -13,7 +13,7 @@ keywords:
 
 Install `@tanstack/ai-vue`. Import the UI factory from `@tanstack/ai-vue/ui`. Call `createChatHook({ options, ...components })` once. Your app calls `useAppChat()` to create the instance. Pass the descriptor as `ui` into `UIChat`, `UIProvider`, and the other static primitives.
 
-> **Deprecated.** Do not install `@tanstack/ai-vue-ui`. That package re-exports this subpath until 1.0.0. See [Chat UI packages](../migration/create-ui).
+> Moving from `@tanstack/ai-vue-ui`? That package has no 1.0 release. See [Upgrade to 1.0](../migration/v1#chat-ui-components).
 
 The factory needs a `toolsComponents` entry for every tool name in `chatOptions`. It also needs an `interruptsComponents.generic` entry for every interrupt id. `generic.fallback` is optional. Widgets go in `components`, `partsComponents`, `toolsComponents`, and `interruptsComponents`, the same way Form and Table register components.
 

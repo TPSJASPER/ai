@@ -15,7 +15,7 @@ keywords:
 
 `TextPart` from `@tanstack/ai-react/ui`, `@tanstack/ai-vue/ui`, and `@tanstack/ai-solid/ui` now renders with [TanStack Markdown](https://tanstack.com/markdown).
 
-This page is only for people who already import that component. `createChatHook` does not use it unless you pass it as `partsComponents.text`. Deprecated `ChatMessage` still prints plain text.
+This page is only for people who already import that component. `createChatHook` does not use it unless you pass it as `partsComponents.text`.
 
 ## Who this hits
 
@@ -137,7 +137,6 @@ Tables, lists, strikethrough, and fenced code still render.
 ## What does not change
 
 - `createChatHook` apps that render `{part.content}` themselves.
-- Deprecated `ChatMessage` text output (plain text).
 - Import path: still `@tanstack/ai-react/ui` (or Vue / Solid `/ui`).
 - The `TextPart` data type on messages (`{ type: 'text', content }`). That is not this component.
 

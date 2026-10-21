@@ -50,7 +50,7 @@ Nothing changes on the client. `useChat` already sends one `threadId` for each c
 The key is the first of these that you set:
 
 1. `promptCache.key`.
-2. The `threadId` or the `conversationId` that you pass to `chat()`.
+2. The `threadId` that you pass to `chat()`.
 3. No key. Claude does not need one. OpenAI uses the key to route requests, so a stable `threadId` gives more cache hits.
 
 A request reads the cache only up to the first token that differs. Text that changes on each call, such as the current time in the system prompt, ends the match there.

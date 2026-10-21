@@ -379,7 +379,7 @@ When multiple middleware define `onChunk`, chunks flow through them in order. If
 | `RUN_STARTED` / `RUN_FINISHED` / `RUN_ERROR` | Run lifecycle boundaries | `runId`, `finishReason`, `usage` (on finish), `message` (on error) |
 | `TEXT_MESSAGE_START` / `TEXT_MESSAGE_CONTENT` / `TEXT_MESSAGE_END` | Assistant text streaming | `messageId`, `delta` (content) |
 | `TOOL_CALL_START` / `TOOL_CALL_ARGS` / `TOOL_CALL_END` | Tool invocation streaming | `toolCallId`, `toolCallName`, `delta` (args), result on end |
-| `STEP_STARTED` / `STEP_FINISHED` | Thinking / reasoning steps | `delta`, `signature` |
+| `REASONING_START` / `REASONING_MESSAGE_CONTENT` / `REASONING_END` | Thinking / reasoning | `messageId`, `delta`. The signature arrives on `REASONING_ENCRYPTED_VALUE` |
 | `STATE_SNAPSHOT` / `STATE_DELTA` | Agent state sync | `snapshot`, `delta` |
 | `CUSTOM` | Extensibility events (incl. structured-output — see below) | `name`, `value` |
 
@@ -904,8 +904,7 @@ Every hook receives a `ChatMiddlewareContext` as its first argument. It provides
 |-------|------|-------------|
 | `requestId` | `string` | Unique ID for this chat request |
 | `streamId` | `string` | Unique ID for this stream |
-| `threadId` | `string` | AG-UI thread identifier. Resolves to caller-provided `threadId` (or legacy `conversationId`), or an auto-generated value if neither is supplied. Use this for event correlation. |
-| `conversationId` | `string \| undefined` | **Deprecated** alias of `threadId`. Always equals `ctx.threadId`; retained so middleware written before the AG-UI rename keeps working. New middleware should read `ctx.threadId`. |
+| `threadId` | `string` | AG-UI thread identifier. Resolves to caller-provided `threadId`, or an auto-generated value if none is supplied. Use this for event correlation. |
 | `phase` | `ChatMiddlewarePhase` | Current lifecycle phase |
 | `iteration` | `number` | Agent loop iteration (0-indexed) |
 | `chunkIndex` | `number` | Running count of chunks yielded |

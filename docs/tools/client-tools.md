@@ -65,8 +65,7 @@ sequenceDiagram
 Native client-tool execution shares the atomic interrupt **batch** lifecycle
 (it can gate multi-item submits) but is **auto-resolved** — you do not call
 `resolveInterrupt` for it. See [Interrupts](../interrupts/overview) for the
-ephemeral lifecycle, batches, and migration from the historical
-`tool-input-available` custom event. After hydration, a pending client-tool
+ephemeral lifecycle and batches. After hydration, a pending client-tool
 execution is restored but not run again. See
 [Client persistence](../persistence/client-persistence#handle-restored-client-tools)
 for recovery policies.
@@ -97,8 +96,7 @@ if (
 You never resolve the execution by hand — that is what the `.client()`
 implementation is for. If you register a tool **without** a `.client()`
 implementation and want to supply the result yourself, use `addToolResult`
-(validated against the tool's output schema); it also preserves the historical
-path for legacy streams. See [Tool approval flow](./tool-approval) for approval
+(validated against the tool's output schema). See [Tool approval flow](./tool-approval) for approval
 forms and [Interrupts](../interrupts/overview) for the approval lifecycle.
 
 ## Defining Client Tools

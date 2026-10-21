@@ -42,11 +42,11 @@ The canonical event stream is the only native approval event stream. It works
 ephemerally without persistence. When server state persistence is configured,
 it stores the complete descriptor/binding batch before the terminal is exposed;
 SSE delivery durability separately assigns opaque resume offsets to delivered
-events. Native paths do not emit `approval-requested` or
-`tool-input-available` custom events.
+events.
 
 See [Interrupts](../interrupts/overview) for the public server/client guide and
-[Migrate to AG-UI interrupts](../interrupts/migration) for deprecated readers.
+[Migrate to AG-UI interrupts](../interrupts/migration) for code that used the
+old custom events.
 
 ## Responsibilities
 

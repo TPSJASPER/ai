@@ -102,7 +102,7 @@ All state is exposed as Angular `Signal`s. Read them by calling them as function
 | `chat.isSubscribed()`     | `boolean`            | Whether a live (SSE push) session is active |
 | `chat.connectionStatus()` | `ConnectionStatus`   | Transport connection status                 |
 
-Available methods on the return value: `sendMessage`, `append`, `reload`, `stop`, `clear`, `setMessages`, `addToolResult`, `addToolApprovalResponse`.
+Available methods on the return value: `sendMessage`, `append`, `reload`, `stop`, `clear`, `setMessages`, `addToolResult`.
 
 ## Server endpoint
 

@@ -271,7 +271,7 @@
           "label": "With Tools",
           "to": "structured-outputs/with-tools",
           "addedAt": "2026-05-19",
-          "updatedAt": "2026-08-19"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Harness Agents",
@@ -341,7 +341,7 @@
           "label": "Tool Architecture",
           "to": "tools/tool-architecture",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-09-30"
+          "updatedAt": "2026-10-21"
         }
       ],
       "tab": "guides"
@@ -532,7 +532,7 @@
           "label": "Migration",
           "to": "interrupts/migration",
           "addedAt": "2026-08-04",
-          "updatedAt": "2026-08-14"
+          "updatedAt": "2026-10-21"
         }
       ]
     },
@@ -1426,28 +1426,27 @@
       "label": "Migration",
       "children": [
         {
+          "label": "Upgrade to 1.0",
+          "to": "migration/v1",
+          "addedAt": "2026-10-21"
+        },
+        {
           "label": "Migration Guide",
           "to": "migration/migration",
           "addedAt": "2026-04-15",
           "updatedAt": "2026-10-08"
         },
         {
-          "label": "Chat UI packages",
-          "to": "migration/create-ui",
-          "addedAt": "2026-08-26",
-          "updatedAt": "2026-09-01"
-        },
-        {
           "label": "From Vercel AI SDK",
           "to": "migration/migration-from-vercel-ai",
           "addedAt": "2026-04-20",
-          "updatedAt": "2026-10-09"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "AG-UI Client Compliance",
           "to": "migration/ag-ui-compliance",
           "addedAt": "2026-05-16",
-          "updatedAt": "2026-08-21"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Sampling \u00e2\u2020\u2019 modelOptions",
@@ -1485,49 +1484,49 @@
           "label": "@tanstack/ai-client",
           "to": "api/ai-client",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-14"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-react",
           "to": "api/ai-react",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-solid",
           "to": "api/ai-solid",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-preact",
           "to": "api/ai-preact",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-vue",
           "to": "api/ai-vue",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-svelte",
           "to": "api/ai-svelte",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-angular",
           "to": "api/ai-angular",
           "addedAt": "2026-06-15",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-octane",
           "to": "api/ai-octane",
           "addedAt": "2026-08-21",
-          "updatedAt": "2026-10-08"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "@tanstack/ai-remix",
@@ -1743,11 +1742,6 @@
         {
           "label": "AgentLoopState",
           "to": "reference/interfaces/AgentLoopState",
-          "addedAt": "2026-04-15"
-        },
-        {
-          "label": "ApprovalRequestedStreamChunk",
-          "to": "reference/interfaces/ApprovalRequestedStreamChunk",
           "addedAt": "2026-04-15"
         },
         {
@@ -2125,11 +2119,6 @@
         {
           "label": "StreamChunk",
           "to": "reference/type-aliases/StreamChunk",
-          "addedAt": "2026-04-15"
-        },
-        {
-          "label": "StreamChunkType",
-          "to": "reference/type-aliases/StreamChunkType",
           "addedAt": "2026-04-15"
         },
         {

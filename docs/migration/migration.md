@@ -13,6 +13,8 @@ keywords:
   - toServerSentEventsStream
 ---
 
+Moving from 0.x to 1.0? Start with [Upgrade to 1.0](./v1).
+
 This guide helps you migrate from the previous version of TanStack AI to the latest version. The major changes focus on improved tree-shaking, clearer API naming, and simplified configuration.
 
 ## Overview of Changes

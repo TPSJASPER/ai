@@ -89,8 +89,6 @@ interface UseChatOptions {
   initialMessages?: UIMessage[] // Starting messages
   threadId?: string // The only chat identity. Required when persistence is on. Minted after mount if omitted.
   forwardedProps?: Record<string, any> // Forwarded to AG-UI RunAgentInput.forwardedProps
-  /** @deprecated Use `forwardedProps` instead. */
-  body?: Record<string, any>
 
   // Callbacks
   onResponse?: (response?: Response) => void
@@ -168,8 +166,10 @@ Your backend should use the `chat()` method which **automatically handles tool e
 
 ```typescript
 {
+  threadId: string;
+  runId: string;
   messages: Message[];
-  data?: Record<string, any>;
+  forwardedProps: Record<string, any>;
 }
 ```
 

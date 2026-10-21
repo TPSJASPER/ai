@@ -90,8 +90,6 @@ Iteration spans are numbered (`#0`, `#1`, ...) in the order model calls are obse
 | root / iteration | `gen_ai.usage.reasoning.output_tokens` | reasoning/thinking tokens, when reported |
 | root / iteration | `tanstack.ai.usage.billed_quantity` | non-token billed quantity, when reported |
 | root / iteration | `tanstack.ai.usage.billed_unit` | unit of the billed quantity (`seconds`, `units`, ...) |
-| root / iteration | `tanstack.ai.usage.duration_seconds` | deprecated duration count; read `billed_quantity`/`billed_unit` instead |
-| root / iteration | `tanstack.ai.usage.units_billed` | deprecated bare unit count; read `billed_quantity`/`billed_unit` instead |
 | root / iteration | `tanstack.ai.usage.upstream_cost` | gateway upstream cost (e.g. OpenRouter), when reported |
 | root / iteration | `tanstack.ai.usage.upstream_input_cost` | upstream input cost split, when reported |
 | root / iteration | `tanstack.ai.usage.upstream_output_cost` | upstream output cost split, when reported |
@@ -104,9 +102,9 @@ Iteration spans are numbered (`#0`, `#1`, ...) in the order model calls are obse
 | tool | `gen_ai.tool.type` | `function` |
 | tool | `tanstack.ai.tool.outcome` | `success` / `error` |
 
-Usage attributes beyond input/output tokens are emitted only when the provider reports them, so spans stay clean otherwise. Cache and reasoning breakdowns use the official GenAI semconv names; `gen_ai.usage.cost` and `gen_ai.usage.total_tokens` are de-facto extensions consumed directly by backends like PostHog — without them, backends re-derive cost from their own price tables and lose cache discounts and gateway markup. Fields with no established convention (the billed quantity/unit pair, the upstream cost split, and the deprecated bare counts) are TanStack-namespaced.
+Usage attributes beyond input/output tokens are emitted only when the provider reports them, so spans stay clean otherwise. Cache and reasoning breakdowns use the official GenAI semconv names; `gen_ai.usage.cost` and `gen_ai.usage.total_tokens` are de-facto extensions consumed directly by backends like PostHog. Without them, backends re-derive cost from their own price tables and lose cache discounts and gateway markup. Fields with no established convention (the billed quantity/unit pair and the upstream cost split) are TanStack-namespaced.
 
-For non-token billing (seconds of video or transcription, fal's endpoint units, ...), `tanstack.ai.usage.billed_quantity` and `tanstack.ai.usage.billed_unit` are emitted as a pair from `usage.billed`, so backends can label and aggregate media usage without knowing the provider. The deprecated `duration_seconds` / `units_billed` attributes carry the same quantities without the unit and remain emitted for backward compatibility.
+For non-token billing (seconds of video or transcription, fal's endpoint units, ...), `tanstack.ai.usage.billed_quantity` and `tanstack.ai.usage.billed_unit` are emitted as a pair from `usage.billed`, so backends can label and aggregate media usage without knowing the provider.
 
 ### Metrics
 

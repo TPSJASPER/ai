@@ -313,8 +313,7 @@ function ChatPage() {
 Set `needsApproval: true` in the definition. Execution pauses with
 `RUN_FINISHED.outcome.type === 'interrupt'`. The primary client API is bound
 `interrupts` + `resolveInterrupt` / `resolveInterrupts` / `cancel`.
-`addToolApprovalResponse` and `pendingInterrupts` remain as deprecated
-compatibility shims during migration.
+`addToolApprovalResponse` and `pendingInterrupts` were removed in 1.0.
 
 ```typescript group=email-approval
 // tools/email.ts
@@ -419,9 +418,10 @@ function ApproveAllButton() {
 }
 ```
 
-Migration: `pendingInterrupts` aliases `interrupts`; `addToolApprovalResponse`
-forwards to the matching bound approval when present. Prefer the bound methods
-above for new code. See `docs/interrupts/`.
+Migration: 1.0 removed `pendingInterrupts` (use `interrupts`) and
+`resumeInterrupts` (use the bound methods). It also removed
+`addToolApprovalResponse` (call `resolveInterrupt` on the bound approval). See
+`docs/interrupts/` and `docs/migration/v1.md`.
 
 ### Pattern 4: Lazy Tool Discovery
 
@@ -870,7 +870,7 @@ The adapter automatically:
 - Lifts the skills into the request's top-level `container.skills` param (the shape Anthropic's API requires).
 - Attaches the required beta headers (`code-execution-2025-08-25` plus `skills-2025-10-02` when skills are present). You do not set these manually.
 
-**Deprecation:** Setting skills via `modelOptions.container.skills` is deprecated. Use `codeExecutionTool(config, { skills })` instead — the legacy path bypasses the beta-header wiring.
+**1.0:** `modelOptions.container.skills` was removed. Pass skills with `codeExecutionTool(config, { skills })`.
 
 ### OpenAI: `shellTool` with skills (Responses API only)
 

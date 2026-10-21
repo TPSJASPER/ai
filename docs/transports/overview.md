@@ -73,7 +73,6 @@ The fetch adapters cancel the response body in these cases:
 
 - Parsing fails.
 - You exit the chunk iterator early.
-- The SSE adapter receives a `[DONE]` marker.
 
 A response that gets to its normal end keeps all of its chunks.
 

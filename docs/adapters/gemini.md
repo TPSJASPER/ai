@@ -262,8 +262,7 @@ import { geminiTextInteractions } from "@tanstack/ai-gemini/experimental";
 export async function POST({ request }: { request: Request }) {
   const params = await chatParamsFromRequestBody(await request.json());
 
-  // The client sends body.previousInteractionId; AG-UI maps `body` into
-  // `forwardedProps` on the wire.
+  // The client sends previousInteractionId in `forwardedProps`.
   const previousInteractionId =
     typeof params.forwardedProps.previousInteractionId === "string"
       ? params.forwardedProps.previousInteractionId
@@ -291,14 +290,14 @@ import { fetchServerSentEvents, useChat } from "@tanstack/ai-react";
 function GeminiChat() {
   const [interactionId, setInteractionId] = useState<string | undefined>();
 
-  const body = useMemo(
+  const forwardedProps = useMemo(
     () => (interactionId ? { previousInteractionId: interactionId } : {}),
     [interactionId],
   );
 
   const { messages, setMessages, sendMessage } = useChat({
     connection: fetchServerSentEvents("/api/chat"),
-    body,
+    forwardedProps,
     onCustomEvent: (eventType, data) => {
       if (
         eventType === "gemini.interactionId" &&
@@ -634,9 +633,8 @@ The accepted set differs per model, and each model's `size` is narrowed to its o
 | `gemini-3.1-flash-lite-image` | same 14 as above (see note) | `1K` only |
 | `gemini-nano-banana-2.1` | same 14 as above | `1K`, `2K`, `4K` |
 | `gemini-3-pro-image` | `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9` | `1K`, `2K`, `4K` |
-| `gemini-2.5-flash-image` | same 10 as above | none — pass the bare ratio, e.g. `size: "16:9"` |
 
-The `K` is case-sensitive (`1k` is rejected by the API), the smallest tier's token is `512` (not `512px` or `0.5K`), and `9:21` is Vertex/Cloud-only so it is not accepted here. Google documents no `image_size` for `gemini-2.5-flash-image`, so that model takes a bare aspect ratio and the adapter sends no `imageSize`.
+The `K` is case-sensitive (`1k` is rejected by the API), the smallest tier's token is `512` (not `512px` or `0.5K`), and `9:21` is Vertex/Cloud-only so it is not accepted here.
 
 > **Note on `gemini-3.1-flash-lite-image`.** The four extreme banner ratios (`1:4`, `4:1`, `1:8`, `8:1`) are partially inferred for this model. Unlike the other three, Flash Lite has no per-model ratio table in Google's Gemini API guide; the 14-value set comes from the Cloud model page's explicit enumeration plus the guide's bare "a discrete set of 14 aspect ratios" assertion. The only Gemini-API enumeration for it is a 10-item bullet headed "New aspect ratios", which we read as a what's-new list rather than an exhaustive one. If the API rejects those four in practice, prefer the 10 standard ratios on this model.
 
@@ -788,9 +786,6 @@ These models use the Interactions API. Each model has its own resolution tiers.
 | `gemini-3.1-flash-lite-image` | Nano Banana 2 Lite — ultra-low-latency, low-cost image generation (1K only) |
 | `gemini-nano-banana-2.1` | Nano Banana 2.1 (1K/2K/4K, no 512 tier) |
 | `gemini-3-pro-image` | Nano Banana Pro — higher quality Gemini native image generation (1K/2K/4K) |
-| `gemini-2.5-flash-image` | Nano Banana — legacy; shuts down 2026-10-02. Takes a bare aspect ratio |
-
-The `gemini-3.1-flash-image-preview` and `gemini-3-pro-image-preview` ids were shut down on 2026-06-25. They remain in the type union as deprecated aliases so existing code compiles, but calls to them fail — use the GA ids above.
 
 ### Imagen Models
 

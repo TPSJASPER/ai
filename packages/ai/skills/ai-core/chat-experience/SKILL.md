@@ -173,7 +173,7 @@ import { useChat, fetchServerSentEvents } from '@tanstack/ai-react'
 
 const { messages, sendMessage, isLoading, error, stop, status } = useChat({
   connection: fetchServerSentEvents('/api/chat'),
-  body: { provider: 'anthropic', model: 'claude-opus-5' },
+  forwardedProps: { provider: 'anthropic', model: 'claude-opus-5' },
   onFinish: (message) => {
     console.log('Response complete:', message.id)
   },
@@ -183,8 +183,9 @@ const { messages, sendMessage, isLoading, error, stop, status } = useChat({
 })
 ```
 
-The `body` field is merged into the POST request body alongside `messages`,
-letting the server read `data.provider`, `data.model`, etc.
+The `forwardedProps` field goes to the server as AG-UI `forwardedProps`.
+The server reads `params.forwardedProps.provider`, `params.forwardedProps.model`,
+and so on. (`body` on `useChat` was removed in 1.0.)
 
 The `status` field tracks the chat lifecycle: `'ready'` | `'submitted'` | `'streaming'` | `'error'`.
 
@@ -928,7 +929,9 @@ export async function POST(request: Request) {
 ```
 
 `toServerSentEventsResponse` handles SSE formatting, abort signals,
-error events (RUN_ERROR), and correct headers automatically.
+error events (RUN_ERROR), and correct headers automatically. The hand-written
+stream above also sends `data: [DONE]`, which a 1.0 client cannot parse:
+`RUN_FINISHED` ends the stream.
 
 ### i. HIGH: Implementing custom onEnd/onFinish callbacks instead of middleware
 

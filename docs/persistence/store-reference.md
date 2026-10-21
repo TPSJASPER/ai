@@ -446,7 +446,7 @@ interface ArtifactRecord {
   artifactId: string
   runId: string
   threadId: string
-  blobKey?: string // where the bytes live; absent on pre-blobKey records
+  blobKey: string // where the bytes live
   name: string
   mimeType: string
   size: number

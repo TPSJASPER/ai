@@ -2,7 +2,7 @@
 
 Migrates client-side TanStack AI code from the legacy field names to the AG-UI–compliant ones introduced in the AG-UI client/server compliance release.
 
-> **Heads up — nothing breaks if you skip this.** The legacy names continue to work via deprecation bridges. Run this codemod when you want to clean up your codebase and remove deprecation warnings. See [`docs/migration/ag-ui-compliance.md`](../../docs/migration/ag-ui-compliance.md) for the full migration story.
+> **Heads up: 1.0 removes the legacy names.** Run this codemod before you upgrade to 1.0. See [`docs/migration/v1.md`](../../docs/migration/v1.md) for the full 1.0 upgrade and [`docs/migration/ag-ui-compliance.md`](../../docs/migration/ag-ui-compliance.md) for the wire change.
 
 ## What it does
 

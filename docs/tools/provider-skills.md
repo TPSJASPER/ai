@@ -127,11 +127,10 @@ Each entry in the `skills` array is an `AnthropicContainerSkill`:
 Up to 8 skills per request. The factory throws at call time if you exceed this
 or supply an invalid `skill_id`.
 
-### Deprecation notice
+### Upgrading from 0.x
 
-Setting skills via `modelOptions.container.skills` is deprecated. Use
-`codeExecutionTool(config, { skills })` instead — the legacy path bypasses the
-automatic beta-header wiring.
+1.0 removes `modelOptions.container.skills`. Pass skills to
+`codeExecutionTool(config, { skills })`.
 
 ---
 

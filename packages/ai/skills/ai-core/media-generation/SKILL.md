@@ -162,11 +162,9 @@ imagen-4.0-generate-001, etc.)
 and `byteplusImage` (Seedream — `seedream-4-0-250828`, `seedream-4-5-251128`,
 the 5.0 family).
 
-> **Use the GA Gemini image ids.** `gemini-3.1-flash-image-preview` and
-> `gemini-3-pro-image-preview` were shut down on 2026-06-25 and now 404. They
-> survive in the type union only as deprecated aliases so existing code keeps
-> compiling — a call to them typechecks and then fails at runtime. Use
-> `gemini-3.1-flash-image` / `gemini-3-pro-image` instead.
+> **Use the GA Gemini image ids.** Use `gemini-3.1-flash-image`,
+> `gemini-3-pro-image`, or `gemini-3.1-flash-lite-image`. The `-preview` ids
+> and `gemini-2.5-flash-image` are shut down and not in the type union.
 
 > **Seedream quirks:** `watermark` defaults to **`true`** (pass
 > `modelOptions: { watermark: false }` for a clean image), `size` is a token
@@ -218,7 +216,7 @@ const imagenResult = await generateImage({
 
 Gemini-native image models (`gemini-3.1-flash-image`,
 `gemini-3.1-flash-lite-image`, `gemini-nano-banana-2.1`,
-`gemini-3-pro-image`, `gemini-2.5-flash-image`) use the Interactions API.
+`gemini-3-pro-image`) use the Interactions API.
 `result.id` is the interaction id. Omit `modelOptions.store` to keep the
 API default (`true`). `store: false` cannot be chained. Gemini keeps a
 stored interaction for 1 day on the free tier and 55 days on a paid tier.
@@ -653,9 +651,8 @@ jobs without `url`), the adapter's `getVideo()` returns
 `body` into the blob store (R2, S3, filesystem) and sets `url`. Without it,
 core buffers the whole video in memory and sets `url` to a base64 `data:` URL
 (fine for short clips, an out-of-memory risk on serverless above ~10 MiB).
-Custom adapters implement `getVideo()`. `adapter.getVideoUrl()` is deprecated:
-it is `getVideo()` with the stream always buffered, and adapters that only
-implement it still work. Providers that
+Custom adapters must implement `getVideo()`. There is no `getVideoUrl()`.
+To poll from app code, call `getVideoJobStatus({ adapter, jobId })`. Providers that
 return a URL (Grok, fal, BytePlus) pass through; persistence still re-hosts
 them, which you want because those URLs expire.
 

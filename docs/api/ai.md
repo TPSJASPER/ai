@@ -318,7 +318,7 @@ const readableStream = toServerSentEventsStream(stream);
 A `ReadableStream<Uint8Array>` in Server-Sent Events format. Each chunk is:
 - Prefixed with `"data: "`
 - Followed by `"\n\n"`
-- Stream ends with `"data: [DONE]\n\n"`
+- The last event is `RUN_FINISHED` (or `RUN_ERROR`)
 
 ## `toServerSentEventsResponse(stream, init?)`
 
@@ -372,11 +372,9 @@ export async function POST(req: Request) {
 
 ### Returns
 
-A promise resolving to `{ messages, threadId, runId, parentRunId?, tools, forwardedProps, state, aguiContext, context }`.
+A promise resolving to `{ messages, threadId, runId, parentRunId?, tools, forwardedProps, state, aguiContext }`.
 
 The returned `aguiContext` is the AG-UI protocol `RunAgentInput.context` field. It is not the same as TanStack AI runtime `chat({ context })`; validate and map it explicitly if you want those values available to tools or middleware.
-
-The returned `context` field is a deprecated alias of `aguiContext` kept for backward compatibility. Prefer `aguiContext` in new code.
 
 > **Framework note.** Next.js Route Handlers, SvelteKit, Hono, and raw Node do not auto-handle thrown `Response` objects. In those, wrap with try/catch or use `chatParamsFromRequestBody(await req.json())` directly.
 

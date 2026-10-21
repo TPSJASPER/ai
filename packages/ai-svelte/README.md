@@ -74,7 +74,6 @@ Creates a reactive chat instance. Returns an object with reactive getters and me
 - `clear()` - Clear all messages
 - `setMessages(messages)` - Set messages manually
 - `addToolResult(result)` - Add a tool result
-- `addToolApprovalResponse(response)` - Respond to a tool approval request
 
 ## Svelte 5 Runes
 

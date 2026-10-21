@@ -170,8 +170,6 @@ export const Route = createFileRoute('/api/chat')({
         const abortController = new AbortController()
         const body = await request.json()
         // `forwardedProps` is the AG-UI field set by `useChat({ forwardedProps })`.
-        // The legacy `body.data.provider` access still works (mirrored on the
-        // wire for backward compatibility) but `forwardedProps` is preferred.
         const provider: Provider = body.forwardedProps?.provider || 'openai'
 
         const stream = chat({
@@ -220,7 +218,7 @@ export async function POST(request: Request) {
 }
 ```
 
-`size` is provider-specific, which is why it cannot be a single literal shared across branches. Gemini 3.x native image models take a `'<aspectRatio>_<tier>'` string (for example `'16:9_4K'`). `gemini-2.5-flash-image` takes a bare ratio with no suffix (for example `'16:9'`). OpenAI and Imagen models take pixel dimensions (for example `'1024x1024'`).
+`size` is provider-specific, which is why it cannot be a single literal shared across branches. Gemini 3.x native image models take a `'<aspectRatio>_<tier>'` string (for example `'16:9_4K'`). OpenAI and Imagen models take pixel dimensions (for example `'1024x1024'`).
 
 ## Using with Summarize Adapters
 

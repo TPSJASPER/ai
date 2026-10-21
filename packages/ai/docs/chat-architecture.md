@@ -391,7 +391,7 @@ CUSTOM { name: "approval-requested", data: { toolCallId, toolName, input, approv
 Processor action:
 1. `updateToolCallApproval()` -- Sets `state: "approval-requested"` and adds `approval` metadata to tool-call part.
 2. Fires `onApprovalRequest` callback.
-3. Client calls `addToolApprovalResponse(approvalId, true/false)`.
+3. Client calls `resolveInterrupt(true/false)` on the bound `tool-approval` interrupt.
 4. `updateToolCallApprovalResponse()` -- Sets `state: "approval-responded"` and `approval.approved`.
 
 ---

@@ -1062,8 +1062,7 @@ interface VideoUrlResult {
 > price from `GET https://api.fal.ai/v1/models/pricing?endpoint_id=…` to
 > compute the exact cost (`billed.quantity * unitPrice`). The same
 > `usage.billed` is surfaced on image, audio, speech, and transcription
-> results. (The deprecated bare count `usage.unitsBilled` is still populated
-> for backward compatibility.)
+> results.
 
 ### Model Variants
 

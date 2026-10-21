@@ -293,38 +293,21 @@ const sendEmail = sendEmailDef.server(async ({ to, subject, body }) => {
 **Handle approval in client:**
 
 ```tsx ignore
-const { messages, addToolApprovalResponse } = useChat({
+const { messages, interrupts } = useChat({
   connection: fetchServerSentEvents("/api/chat"),
+  tools: [sendEmailDef],
 });
 
-// In your render (guard `type` and `approval` so `part.approval.id` is safe):
-{part.type === "tool-call" &&
-  part.state === "approval-requested" &&
-  part.approval && (
-    <div>
-      <p>Approve sending email to {part.input.to}?</p>
-      <button
-        onClick={() =>
-          addToolApprovalResponse({
-            id: part.approval.id,
-            approved: true,
-          })
-        }
-      >
-        Approve
-      </button>
-      <button
-        onClick={() =>
-          addToolApprovalResponse({
-            id: part.approval.id,
-            approved: false,
-          })
-        }
-      >
-        Deny
-      </button>
+// In your render, pending approvals come from `interrupts`:
+{interrupts.map((interrupt) =>
+  interrupt.kind === "tool-approval" ? (
+    <div key={interrupt.id}>
+      <p>Approve sending email to {interrupt.originalArgs.to}?</p>
+      <button onClick={() => interrupt.resolveInterrupt(true)}>Approve</button>
+      <button onClick={() => interrupt.resolveInterrupt(false)}>Deny</button>
     </div>
-  )}
+  ) : null,
+)}
 ```
 
 ### Hybrid Tools (Server + Client)

@@ -501,8 +501,6 @@ await client.sendMessage('Analyze this complex problem', {
 })
 ```
 
-> **Note:** The legacy `body` constructor option is still supported but deprecated. New code should use `forwardedProps`. Both populate the same wire field.
-
 ### React Example
 
 Here's how to use multimodal messages in a React component:

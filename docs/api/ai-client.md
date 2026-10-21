@@ -152,9 +152,8 @@ goes away. Users of the framework hooks need no change.
 - `initialMessages?` - Initial messages array
 - `threadId?` - The only identity for this chat. Required when persistence is on. If omitted, minted after mount.
 - `forwardedProps?` - Arbitrary client-controlled JSON forwarded to the server in the AG-UI `RunAgentInput.forwardedProps` field
-- `body?` - **Deprecated.** Use `forwardedProps` instead. Still works — values are merged into `forwardedProps` on the wire and mirrored under the legacy `data` field for backward compatibility
 - `byok?` - Optional BYOK keyring from [`defineByok`](#definebyok). On each send the client prepares the resolved provider and stamps `x-byok-*` request headers. Keys never go in the body
-- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps`, `body`, and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
+- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps` and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
 - `context?` - Typed client-local runtime context passed to client tool implementations. This value is not serialized to the server
 - `tools?` - Registered `.client()` tool implementations. The client automatically executes matching tools when the model calls them
 - `onResponse?` - Callback when response is received
@@ -178,9 +177,9 @@ Sends a user message and starts the run.
 
 The second argument is extra JSON merged into this request's `forwardedProps`. The third argument is `SendMessageOptions`. `{ whenBusy }` overrides the queue policy for this send. `{ body }` is extra JSON too.
 
-Chat-level `body`, the positional argument, and `sendOptions.body` shallow-merge. `sendOptions.body` wins on key collisions.
+Chat-level `forwardedProps`, the positional argument, and `sendOptions.body` shallow-merge. `sendOptions.body` wins on key collisions.
 
-Framework hooks expose `sendMessage(content, sendOptions)` with no positional body. Pass `{ body }` there. It merges with the hook's `body` the same way.
+Framework hooks expose `sendMessage(content, sendOptions)` with no positional body. Pass `{ body }` there. It merges with the hook's `forwardedProps` the same way.
 
 ```typescript
 import { client } from "./client";
@@ -375,17 +374,18 @@ await client.addToolResult({
 });
 ```
 
-#### `addToolApprovalResponse(response)`
+#### `getInterrupts()`
 
-Responds to a tool approval request.
+Returns the pending interrupts of the paused run. A tool that needs approval shows up as a `tool-approval` item. Call `resolveInterrupt` on that item with the decision. This example approves every pending tool call:
 
 ```typescript
 import { client } from "./client";
 
-await client.addToolApprovalResponse({
-  id: "approval_123",
-  approved: true,
-});
+for (const interrupt of client.getInterrupts()) {
+  if (interrupt.kind === "tool-approval") {
+    interrupt.resolveInterrupt(true);
+  }
+}
 ```
 
 ### Properties

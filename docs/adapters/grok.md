@@ -484,7 +484,7 @@ console.log(result.text);
 
 ## Realtime Voice
 
-Grok also exposes a Realtime voice adapter (`grokRealtime`) and a token issuer (`grokRealtimeToken`) for low-latency voice conversations. The default model is `grok-voice-think-fast-2.0` (xAI's current recommended speech-to-speech model); `grok-voice-latest` always points at the newest model. The 1.0 ids remain accepted for compatibility, but xAI has deprecated `grok-voice-think-fast-1.0`. See [Realtime Voice Chat](../media/realtime-chat) for the end-to-end flow.
+Grok also exposes a Realtime voice adapter (`grokRealtime`) and a token issuer (`grokRealtimeToken`) for low-latency voice conversations. The default model is `grok-voice-think-fast-2.0` (xAI's current recommended speech-to-speech model); `grok-voice-latest` always points at the newest model. See [Realtime Voice Chat](../media/realtime-chat) for the end-to-end flow.
 
 ## Environment Variables
 

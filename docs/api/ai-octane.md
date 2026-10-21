@@ -105,8 +105,7 @@ export function ChatComponent() {
 
   type ChatMessages = InferChatMessages<typeof chatOptions>
 
-  const { messages, sendMessage, isLoading, error, addToolApprovalResponse } =
-    useChat(chatOptions)
+  const { messages, sendMessage, isLoading, error } = useChat(chatOptions)
 
   return (
     <div>
@@ -115,14 +114,6 @@ export function ChatComponent() {
       {error ? error.message : null}
       <button onClick={() => void sendMessage('hi')} type="button">
         Send
-      </button>
-      <button
-        onClick={() =>
-          void addToolApprovalResponse({ id: 'approval-1', approved: true })
-        }
-        type="button"
-      >
-        Approve
       </button>
       {messages.length}
     </div>
@@ -150,7 +141,6 @@ Extends `ChatClientOptions` from `@tanstack/ai-client`. Pass `connection` or `fe
 - `context?` - client-only runtime context for client tools. Not sent to the server
 - `onResponse?` / `onChunk?` / `onFinish?` / `onError?` / `onInterruptStateChange?`
 - `devtools?` - display options. The hook always tags `framework: 'octane'`
-- `body?` - deprecated. Use `forwardedProps`
 
 Client tools run automatically. There is no `onToolCall` callback.
 
@@ -182,10 +172,6 @@ interface UseChatReturn {
     output: unknown
     state?: 'output-available' | 'output-error'
     errorText?: string
-  }) => Promise<void>
-  addToolApprovalResponse: (response: {
-    id: string
-    approved: boolean
   }) => Promise<void>
   reload: () => Promise<void>
   stop: () => void
@@ -265,12 +251,24 @@ export function Chat() {
 
 ## Example: tool approval
 
+Pending approvals show up in `interrupts`. Pass the shared tool definition to `tools` so each item is typed. Then call `resolveInterrupt` with the decision.
+
 ```tsx
+import { toolDefinition } from '@tanstack/ai'
 import { useChat, fetchServerSentEvents } from '@tanstack/ai-octane'
+import { z } from 'zod'
+
+const deleteFileTool = toolDefinition({
+  name: 'delete_file',
+  description: 'Delete a file',
+  needsApproval: true,
+  inputSchema: z.object({ path: z.string() }),
+})
 
 export function ChatWithApproval() {
-  const { messages, sendMessage, addToolApprovalResponse } = useChat({
+  const { sendMessage, interrupts } = useChat({
     connection: fetchServerSentEvents('/api/chat'),
+    tools: [deleteFileTool],
   })
 
   return (
@@ -278,44 +276,24 @@ export function ChatWithApproval() {
       <button onClick={() => void sendMessage('run the tool')} type="button">
         Send
       </button>
-      {messages.map((message) =>
-        message.parts.map((part) => {
-          if (
-            part.type !== 'tool-call' ||
-            part.state !== 'approval-requested' ||
-            !part.approval
-          ) {
-            return null
-          }
-          const approvalId = part.approval.id
-          return (
-            <div key={part.id}>
-              <p>Approve: {part.name}</p>
-              <button
-                onClick={() =>
-                  void addToolApprovalResponse({
-                    id: approvalId,
-                    approved: true,
-                  })
-                }
-                type="button"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() =>
-                  void addToolApprovalResponse({
-                    id: approvalId,
-                    approved: false,
-                  })
-                }
-                type="button"
-              >
-                Deny
-              </button>
-            </div>
-          )
-        }),
+      {interrupts.map((interrupt) =>
+        interrupt.kind === 'tool-approval' ? (
+          <div key={interrupt.id}>
+            <p>Approve: {interrupt.toolName}</p>
+            <button
+              onClick={() => interrupt.resolveInterrupt(true)}
+              type="button"
+            >
+              Approve
+            </button>
+            <button
+              onClick={() => interrupt.resolveInterrupt(false)}
+              type="button"
+            >
+              Deny
+            </button>
+          </div>
+        ) : null,
       )}
     </div>
   )

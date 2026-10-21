@@ -142,9 +142,8 @@ Extends `ChatClientOptions` from `@tanstack/ai-client` (minus internal state cal
 - `initialMessages?` - Initial messages array
 - `threadId?` - The only identity for this chat. Required when persistence is on. If omitted, minted after mount.
 - `forwardedProps?` - Arbitrary client-controlled JSON forwarded to the server in the AG-UI `RunAgentInput.forwardedProps` field (e.g., `{ provider: 'openai', model: 'gpt-5.5' }`)
-- `body?` - **Deprecated.** Use `forwardedProps` instead. Still works for backward compatibility; values are merged into `forwardedProps` on the wire
 - `byok?` - Optional BYOK keyring from `defineByok`. On each send the client prepares the resolved provider and stamps `x-byok-*` request headers. Keys never go in the body
-- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps`, `body`, and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
+- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps` and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
 - `context?` - Typed client-local runtime context passed to client tool implementations. This value is not serialized to the server
 - `live?` - Enable live subscription mode (subscribes on creation)
 - `onResponse?` - Callback when response is received
@@ -161,6 +160,7 @@ Extends `ChatClientOptions` from `@tanstack/ai-client` (minus internal state cal
 
 ```typescript
 import type {
+  BoundInterrupts,
   UIMessage,
   MultimodalContent,
   ChatClientState,
@@ -183,10 +183,7 @@ interface CreateChatReturn<TContext = unknown> {
     state?: "output-available" | "output-error";
     errorText?: string;
   }) => Promise<void>;
-  addToolApprovalResponse: (response: {
-    id: string;
-    approved: boolean;
-  }) => Promise<void>;
+  readonly interrupts: BoundInterrupts;
   reload: () => Promise<void>;
   stop: () => void;
   readonly isLoading: boolean;
@@ -198,8 +195,6 @@ interface CreateChatReturn<TContext = unknown> {
   readonly isHydrating: boolean;
   setMessages: (messages: ReadonlyArray<UIMessage>) => void;
   clear: () => void;
-  /** @deprecated Use `updateForwardedProps` instead. */
-  updateBody: (body: Record<string, any>) => void;
   updateForwardedProps: (forwardedProps: Record<string, any>) => void;
   updateContext: (context: TContext) => void;
 }
@@ -210,7 +205,7 @@ interface CreateChatReturn<TContext = unknown> {
 - **`create*` naming** -- factory functions, not hooks. Call outside of any lifecycle.
 - **Reactive getters** -- state properties (`messages`, `isLoading`, `error`, `status`, `isSubscribed`, `connectionStatus`, `sessionGenerating`, `isHydrating`) are Svelte 5 `$state` via getters. Access directly (e.g., `chat.messages`, not `chat.messages.value`).
 - **No automatic cleanup** -- unlike React/Vue/Solid, `createChat` does not auto-dispose. Call `chat.stop()` manually when the component unmounts (e.g., in `onDestroy` or an `$effect` return).
-- **`updateForwardedProps()`** -- update AG-UI `forwardedProps` dynamically (e.g., for model selection). In Vue, changes to the `forwardedProps` option are synced via `watch`; in Svelte, call this method explicitly. The legacy `updateBody()` is still available but deprecated.
+- **`updateForwardedProps()`** -- update AG-UI `forwardedProps` dynamically (e.g., for model selection). In Vue, changes to the `forwardedProps` option are synced via `watch`; in Svelte, call this method explicitly.
 - **`.svelte.ts` files** -- source files use the `.svelte.ts` extension for Svelte 5 rune support.
 
 ## `createByok(client)`
@@ -287,42 +282,36 @@ import {
 
 ## Example: Tool Approval
 
+Pending approvals show up in `interrupts`. Pass the shared tool definition to `tools` so each item is typed. Then call `resolveInterrupt` with the decision.
+
 ```svelte
 <script lang="ts">
+  import { toolDefinition } from "@tanstack/ai";
   import { createChat, fetchServerSentEvents } from "@tanstack/ai-svelte";
+  import { z } from "zod";
+
+  const deleteFileTool = toolDefinition({
+    name: "delete_file",
+    description: "Delete a file",
+    needsApproval: true,
+    inputSchema: z.object({ path: z.string() }),
+  });
 
   const chat = createChat({
     connection: fetchServerSentEvents("/api/chat"),
+    tools: [deleteFileTool],
   });
 </script>
 
 <div>
-  {#each chat.messages as message (message.id)}
-    {#each message.parts as part}
-      {#if part.type === "tool-call" && part.state === "approval-requested" && part.approval}
-        <div>
-          <p>Approve: {part.name}</p>
-          <button
-            onclick={() =>
-              chat.addToolApprovalResponse({
-                id: part.approval.id,
-                approved: true,
-              })}
-          >
-            Approve
-          </button>
-          <button
-            onclick={() =>
-              chat.addToolApprovalResponse({
-                id: part.approval.id,
-                approved: false,
-              })}
-          >
-            Deny
-          </button>
-        </div>
-      {/if}
-    {/each}
+  {#each chat.interrupts as interrupt (interrupt.id)}
+    {#if interrupt.kind === "tool-approval"}
+      <div>
+        <p>Approve: {interrupt.toolName}</p>
+        <button onclick={() => interrupt.resolveInterrupt(true)}>Approve</button>
+        <button onclick={() => interrupt.resolveInterrupt(false)}>Deny</button>
+      </div>
+    {/if}
   {/each}
 </div>
 ```

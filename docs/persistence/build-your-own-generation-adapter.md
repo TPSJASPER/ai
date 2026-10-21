@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   artifact_id text PRIMARY KEY NOT NULL,
   run_id text NOT NULL,
   thread_id text NOT NULL,
-  blob_key text,
+  blob_key text NOT NULL,
   name text NOT NULL,
   mime_type text NOT NULL,
   size integer NOT NULL,
@@ -228,9 +228,7 @@ function createGenerationRunStore(db: DatabaseSync) {
 
 Persist `blobKey` verbatim. It records where these bytes actually went, and a
 `storageKey` mapper can put them anywhere, so a reader cannot recompute the
-path. `resolveArtifactBlobKey(record)` falls back to the default convention
-only for rows written before the column existed. Drop it and every artifact
-stored under a custom key becomes unreadable.
+path. A record without `blobKey` does not load.
 
 ```ts
 import { DatabaseSync } from 'node:sqlite'
@@ -242,7 +240,7 @@ function mapArtifact(row: Record<string, unknown>): ArtifactRecord {
     artifactId: String(row.artifact_id),
     runId: String(row.run_id),
     threadId: String(row.thread_id),
-    ...(typeof row.blob_key === 'string' ? { blobKey: row.blob_key } : {}),
+    blobKey: String(row.blob_key),
     name: String(row.name),
     mimeType: String(row.mime_type),
     size: Number(row.size),
@@ -277,7 +275,7 @@ function createArtifactStore(db: DatabaseSync) {
         record.artifactId,
         record.runId,
         record.threadId,
-        record.blobKey ?? null,
+        record.blobKey,
         record.name,
         record.mimeType,
         record.size,

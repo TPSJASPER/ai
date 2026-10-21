@@ -197,7 +197,6 @@ Extends `ChatClientOptions` from `@tanstack/ai-client`. Pass `connection` or `fe
 - `context?` - client-only runtime context for client tools. Not sent to the server
 - `onResponse?` / `onChunk?` / `onFinish?` / `onError?` / `onInterruptStateChange?`
 - `devtools?` - display options. The helper always tags `framework: 'remix'`
-- `body?` - deprecated. Use `forwardedProps`
 
 Client tools run automatically.
 

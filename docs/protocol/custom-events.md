@@ -102,8 +102,6 @@ individual interface.
 | `SnippetRegisteredEvent` | `snippet:registered` | `{ id: string; name: string; description: string; timestamp: number }` | when a snippet is registered into the tool registry |
 | `StructuredOutputStartEvent` | `structured-output.start` | `{ messageId: string }` | [`chat({ outputSchema, stream: true })`](../structured-outputs/streaming), once per structured message |
 | `StructuredOutputCompleteEvent<T>` | `structured-output.complete` | `{ object: T; raw: string; reasoning?: string }` | structured-output streaming, once with the validated object |
-| `ApprovalRequestedEvent` | `approval-requested` | `{ toolCallId: string; toolName: string; input: unknown; approval: { id: string; needsApproval: true } }` | a server tool needs approval — the run pauses; see [Tool Approval Flow](../tools/tool-approval) |
-| `ToolInputAvailableEvent` | `tool-input-available` | `{ toolCallId: string; toolName: string; input: unknown }` | a client tool is invoked — the run pauses; see [Client Tools](../tools/client-tools) |
 | `UIResourceEvent` | `ui-resource` | `{ resource; serverId?: string; toolCallId: string; toolName: string; meta?: Record<string, unknown> }` | an MCP tool returns a `ui://` resource ([MCP Apps](../mcp/apps)) |
 
 ## These stay CUSTOM

@@ -17,17 +17,18 @@ AG-UI interrupt descriptors. Native runs end with
 whose `parentRunId` is the interrupted run.
 
 There is no codemod. Migrate the server lifecycle and client rendering together.
-Legacy readers stay temporarily for old streams but cannot provide the full
-native contract. Start from [Overview](./overview).
+1.0 reads only native interrupts. For the full list of 1.0 changes, see
+[Upgrade to 1.0](../migration/v1). Start from [Overview](./overview).
 
 ## API mapping
 
-| Deprecated / legacy | Current |
+| Old (removed in 1.0) | Current |
 | --- | --- |
-| `pendingInterrupts` | `interrupts` (`pendingInterrupts` is a deprecated alias of the same array) |
+| `pendingInterrupts` | `interrupts` |
 | `ChatClient.getPendingInterrupts()` | `ChatClient.getInterrupts()` |
-| `addToolApprovalResponse({ id, approved })` | Find the bound `tool-approval` item, call `interrupt.resolveInterrupt(approved)` |
+| `addToolApprovalResponse({ id, approved })` | Find the bound `tool-approval` item, call `interrupt.resolveInterrupt(approved)`. Removed in 1.0 from every framework and from `ChatClient`. |
 | Raw `resumeInterrupts(entries, state)` | Bound item methods or root `resolveInterrupts(...)`; reserve `resumeInterruptsUnsafe` for validated recovery tooling |
+| `interrupt.error` | `interrupt.errors[0]` |
 | `approval-requested` custom event | `RUN_FINISHED` interrupt descriptor, reason `tool_call` |
 | `tool-input-available` custom event | `RUN_FINISHED` interrupt descriptor, reason `tanstack:client_tool_execution` |
 | Boolean denial treated as cancellation | `resolveInterrupt(false)` for denial; `cancel()` for payloadless cancellation |
@@ -75,8 +76,8 @@ with no schema the boolean shorthand stays valid.
 
 `resolveInterrupt(false, ...)` continues the model with an explicit rejected
 decision. `cancel()` emits AG-UI `status: 'cancelled'` and never validates or
-selects the reject branch. Deprecated `addToolApprovalResponse({ approved: false })`
-maps to denial, not cancellation.
+selects the reject branch. If you called `addToolApprovalResponse({ approved: false })`,
+use `resolveInterrupt(false)`. It is a denial, not a cancellation.
 
 ## Batches
 
@@ -121,15 +122,12 @@ exactly-once, replay protection, or restart recovery.
 `resumeInterruptsUnsafe` is a low-level escape hatch for submitting validated
 raw resume entries directly, not the normal target for approval UI.
 
-## Legacy limits
+## Old streams
 
-Deprecated readers recognize well-formed historical `approval-requested` and
-`tool-input-available` events and convert a fully-covered legacy batch into one
-cloned-history follow-up. They do **not** support edited arguments, custom
-approval payloads, generic responses, payloadless cancellation, or expiry/
-schema-hash reconciliation; those fail with `legacy-unsupported`. Native and
-legacy items cannot mix in one batch; a failed legacy transport keeps staged
-decisions and reports `legacy-submit-failed`.
+1.0 does not read the `approval-requested` and `tool-input-available` custom
+events. An interrupt descriptor without a binding (only `metadata.kind`) shows
+as `kind: 'unbound'`, and you cannot resume it. Upgrade the server and the
+client together, and finish or drop the runs that paused on 0.x.
 
 ## Checklist
 
@@ -139,4 +137,4 @@ decisions and reports `legacy-submit-failed`.
    denial/cancellation.
 4. Replace approval loops with atomic batch staging or root `resolveInterrupts`.
 5. Keep `addToolResult` for client-tool results where useful.
-6. Test expired items and failed transport before removing legacy support.
+6. Test expired items and failed transport.

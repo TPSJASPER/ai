@@ -108,8 +108,9 @@ const { messages, sendMessage } = useChat({
 })
 ```
 
-The `body` field in options is merged into the POST request body alongside
-`messages` and `data`, so the server receives `{ messages, data, provider, model }`.
+The `body` field in the connection options is merged into AG-UI
+`forwardedProps`, so the server reads `params.forwardedProps.provider` and
+`params.forwardedProps.model`.
 
 **Custom fetch client (for proxies, interceptors, retries):**
 

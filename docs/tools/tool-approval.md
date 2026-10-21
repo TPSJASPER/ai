@@ -17,8 +17,8 @@ The tool approval flow allows you to require user approval before executing sens
 
 The current client API exposes approvals as bound AG-UI interrupts. For the
 complete server/client lifecycle, atomic batch controls, generic interrupts,
-and recovery, see [Interrupts](../interrupts/overview). For deprecated API mapping,
-see [Migrate to AG-UI interrupts](../interrupts/migration).
+and recovery, see [Interrupts](../interrupts/overview). To move from the removed 0.x
+APIs, see [Migrate to AG-UI interrupts](../interrupts/migration).
 
 1. **`awaiting-input`** — Tool call started, no arguments yet
 2. **`input-streaming`** — Arguments arriving incrementally
@@ -207,15 +207,6 @@ function ChatComponent() {
 `canResolve` stays `false` until the interrupt is bound and ready; `resuming` is
 `true` while a resolution is in flight, so gate the buttons on both.
 
-## Migrating from `addToolApprovalResponse`
-
-Older UIs read `part.approval` off tool-call parts and called
-`addToolApprovalResponse({ id, approved })`. That API is deprecated. Render from
-the `interrupts` array and call `resolveInterrupt` instead (see [Approval
-UI](#approval-ui) above) — it is tool-agnostic by default, so the per-tool
-narrowing the part-based pattern needed goes away. For the full mapping, see
-[Migrate to AG-UI interrupts](../interrupts/migration).
-
 ## Client Tools with Approval
 
 Client tools can also require approval:
@@ -318,9 +309,8 @@ The `@tanstack/ai-client` package exposes the same value on the
 `tool-result` part. Use `part.outcome` to distinguish a denial or cancellation
 from an ordinary tool execution failure.
 
-The structured outcome is emitted by both the AG-UI interrupt resume path and
-the deprecated `addToolApprovalResponse` path. Both paths keep the existing
-error content.
+The AG-UI interrupt resume path emits the structured outcome. It keeps the
+existing error content.
 
 ## Next Steps
 

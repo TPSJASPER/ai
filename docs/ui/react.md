@@ -14,7 +14,7 @@ keywords:
 
 Install `@tanstack/ai-react`. Import the UI factory from `@tanstack/ai-react/ui`. Call `createChatHook({ options, ...components })` once at module scope. This matches Form `createFormHook` and Table `createTableHook`: widgets register on the factory, mix onto Part / Interrupt / Input, and automatic dispatch still walks the message list.
 
-> **Deprecated.** Do not install `@tanstack/ai-react-ui`. That package re-exports this subpath until 1.0.0. See [Chat UI packages](../migration/create-ui).
+> Moving from `@tanstack/ai-react-ui`? That package has no 1.0 release. See [Upgrade to 1.0](../migration/v1#chat-ui-components).
 
 The factory returns `useAppChat` and `useChatContext`. Call `useAppChat()` in the screen to create the instance. Render `<chat.AppChat />`. Call `useChatContext()` inside a mapped component when it needs live chat. That value is the instance that `chat.AppChat` provides.
 

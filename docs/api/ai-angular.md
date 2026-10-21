@@ -105,9 +105,8 @@ Extends `ChatClientOptions` from `@tanstack/ai-client` (minus internal state cal
 - `initialMessages?` - Initial messages array
 - `threadId?` - The only identity for this chat. Required when persistence is on. If omitted, minted after mount.
 - `forwardedProps?` - Arbitrary client-controlled JSON forwarded to the server in the AG-UI `RunAgentInput.forwardedProps` field. Reactive — accepts a plain value, an Angular `Signal`, or a zero-arg getter; changes sync automatically via `effect`
-- `body?` - **Deprecated.** Use `forwardedProps` instead. Still works for backward compatibility; values are merged into `forwardedProps` on the wire. Reactive (same forms as `forwardedProps`)
 - `byok?` - Optional BYOK keyring from `defineByok`. On each send the client prepares the resolved provider and stamps `x-byok-*` request headers. Keys never go in the body
-- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps`, `body`, and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
+- `byokProvider?` - Optional function that returns the provider slug for this chat. If it returns a slug, only that key is prepared and sent. Otherwise the merged `provider` from `forwardedProps` and per-call `sendMessage` `body` is used. Later sources win. If no slug resolves, the send throws instead of attaching every stored key
 - `context?` - Typed client-local runtime context passed to client tool implementations. Reactive (same forms). This value is not serialized to the server
 - `live?` - Enable live subscription mode (auto-subscribes/unsubscribes). Reactive (same forms)
 - `outputSchema?` - Standard-schema-compatible schema (Zod, Valibot, ArkType, or JSON Schema). When provided, adds typed `partial` and `final` signals to the return value
@@ -121,7 +120,7 @@ Extends `ChatClientOptions` from `@tanstack/ai-client` (minus internal state cal
 - `onCustomEvent?` - Callback for custom stream events
 - `streamProcessor?` - Stream processing configuration
 
-**Reactive options** (`body`, `forwardedProps`, `context`, `live`) accept a `ReactiveOption<T>`, which is one of:
+**Reactive options** (`forwardedProps`, `context`, `live`) accept a `ReactiveOption<T>`, which is one of:
 
 ```typescript
 import type { Signal } from "@angular/core";
@@ -144,6 +143,7 @@ import type {
 } from "@tanstack/ai-angular";
 import type { ModelMessage, InferSchemaType } from "@tanstack/ai/client";
 import type {
+  BoundInterrupts,
   ChatClientState,
   ConnectionStatus,
   SendMessageOptions,
@@ -164,10 +164,7 @@ interface InjectChatResult {
     state?: "output-available" | "output-error";
     errorText?: string;
   }) => Promise<void>;
-  addToolApprovalResponse: (response: {
-    id: string;
-    approved: boolean;
-  }) => Promise<void>;
+  interrupts: Signal<BoundInterrupts>;
   reload: () => Promise<void>;
   stop: () => void;
   clear: () => void;
@@ -277,33 +274,32 @@ export class ChatComponent {
 
 ## Example: Tool Approval
 
+Pending approvals show up in `interrupts`. Pass the shared tool definition to `tools` so each item is typed. Then call `resolveInterrupt` with the decision.
+
 ```typescript
 import { Component } from "@angular/core";
-import { CommonModule } from "@angular/common";
+import { toolDefinition } from "@tanstack/ai";
 import { injectChat, fetchServerSentEvents } from "@tanstack/ai-angular";
+import { z } from "zod";
+
+const deleteFileTool = toolDefinition({
+  name: "delete_file",
+  description: "Delete a file",
+  needsApproval: true,
+  inputSchema: z.object({ path: z.string() }),
+});
 
 @Component({
   selector: "app-approval-chat",
   standalone: true,
-  imports: [CommonModule],
   template: `
-    @for (message of chat.messages(); track message.id) {
-      @for (part of message.parts; track $index) {
-        @if (
-          part.type === 'tool-call' &&
-          part.state === 'approval-requested' &&
-          part.approval
-        ) {
-          <div>
-            <p>Approve: {{ part.name }}</p>
-            <button (click)="chat.addToolApprovalResponse({ id: part.approval!.id, approved: true })">
-              Approve
-            </button>
-            <button (click)="chat.addToolApprovalResponse({ id: part.approval!.id, approved: false })">
-              Deny
-            </button>
-          </div>
-        }
+    @for (interrupt of chat.interrupts(); track interrupt.id) {
+      @if (interrupt.kind === 'tool-approval') {
+        <div>
+          <p>Approve: {{ interrupt.toolName }}</p>
+          <button (click)="interrupt.resolveInterrupt(true)">Approve</button>
+          <button (click)="interrupt.resolveInterrupt(false)">Deny</button>
+        </div>
       }
     }
   `,
@@ -311,6 +307,7 @@ import { injectChat, fetchServerSentEvents } from "@tanstack/ai-angular";
 export class ApprovalChatComponent {
   chat = injectChat({
     connection: fetchServerSentEvents("/api/chat"),
+    tools: [deleteFileTool],
   });
 }
 ```

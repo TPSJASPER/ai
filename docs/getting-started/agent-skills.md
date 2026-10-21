@@ -50,7 +50,7 @@ npx skills add TanStack/ai -g --skill tanstack-ai tanstack-ai-migration
 | Skill                   | Answers                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
 | `tanstack-ai`           | Whether to use TanStack AI, which package covers a task, how to install and wire it        |
-| `tanstack-ai-migration` | Porting from the Vercel AI SDK, upgrading a deprecated API                                 |
+| `tanstack-ai-migration` | Porting from the Vercel AI SDK, upgrading from 0.x to 1.0                                  |
 
 These skills hold no API guidance of their own. Once a package is installed,
 they hand off to `npx @tanstack/intent@latest load <package>#<skill>`, so what

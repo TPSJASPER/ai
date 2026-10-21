@@ -271,9 +271,9 @@ All wrappers accept `toolOptions`, `context`, and `onError`. A contextual client
 
 ### Migrate from the earlier wrapper names
 
-The earlier names still work, but they are deprecated. They will be removed in 1.0.0:
+1.0 removes the earlier names. Use the current names:
 
-| Deprecated name     | Current name                |
+| Removed name        | Current name                |
 | ------------------- | --------------------------- |
 | `useWebMCPTools`    | `useRegisterWebMCPTools`    |
 | `createWebMCPTools` | `createRegisterWebMCPTools` |

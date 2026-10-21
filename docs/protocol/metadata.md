@@ -48,7 +48,7 @@ Send these on every successful run:
 | `type`, `threadId`, `runId` | Spec top level | Frame the run. Missing ids break resume and correlation. |
 | `usage[]` | Spec top level on `RUN_FINISHED` / `RUN_ERROR` | Token counts. Use `inputTokens`, `outputTokens`, `totalTokens`. |
 | `finishReason` | `metadata.tanstack` on `RUN_FINISHED` | After a tool result, the client continues only when this is not `"stop"`. |
-| `model` | `metadata.tanstack` | SSE `[DONE]` fallback and generation reconstruct. |
+| `model` | `metadata.tanstack` | Generation reconstruct. |
 
 `finishReason` is one of `"stop"`, `"length"`, `"content_filter"`, `"tool_calls"`, or `null`.
 
