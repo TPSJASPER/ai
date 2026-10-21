@@ -46,7 +46,10 @@ export const SnapshotFailed = createPluginEvent<{ message: string }>(
   'tanstack/snapshots:failed',
 )
 
-/** One file that `write_file`, `edit_file`, or `patch` changed. */
+/**
+ * One changed file: from `write_file`, `edit_file`, or `patch`, or from
+ * `snapshots()` for a file that another tool, like `bash`, changed.
+ */
 export interface FileChange {
   /** The absolute path of the file, as the tools use it. */
   path: string
@@ -56,8 +59,10 @@ export interface FileChange {
   /**
    * The change as a unified diff with 3 lines of context. Its paths are
    * from the workspace root, with `/`. Not set for a binary file, a file
-   * over 1 MiB, a patch over 256 KiB, or a file that the permission rules
-   * protect, like `.env`.
+   * over 1 MiB, a patch over 256 KiB, or a `.env` file. The workspace tools
+   * also send no patch for a file that the permission rules protect.
+   * `snapshots()` does not check the rules: it only never stores `.env`
+   * files.
    */
   patch?: string
   /** The added lines of `patch`. 0 without a patch. */
@@ -69,10 +74,13 @@ export interface FileChange {
 }
 
 /**
- * `write_file`, `edit_file`, or `patch` changed a file. It comes after the
+ * A file changed. `write_file`, `edit_file`, and `patch` send it after the
  * `afterWrite` hooks, so the change of a formatter is in the patch. A
  * `patch` call sends one event for each file, and one `'moved'` event for a
- * move. A write that leaves the text as it was sends none.
+ * move. A write that leaves the text as it was sends none. `snapshots()`
+ * sends it at the end of each model step for the files that the tools did
+ * not report, like the files of `bash` (at most 100 for each step, and
+ * never `'moved'`).
  */
 export const FileChanged = createPluginEvent<FileChange>(
   'tanstack/workspace-tools:file-changed',
