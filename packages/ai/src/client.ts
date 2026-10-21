@@ -56,11 +56,12 @@ function hasOwnKey(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key)
 }
 
+/**
+ * An AG-UI `RunAgentInput` envelope. The generation client sends its input
+ * in `forwardedProps`.
+ */
 function isGenerationEnvelope(body: unknown): body is Record<string, unknown> {
-  return (
-    isRecord(body) &&
-    (hasOwnKey(body, 'data') || hasOwnKey(body, 'forwardedProps'))
-  )
+  return isRecord(body) && hasOwnKey(body, 'forwardedProps')
 }
 
 function assertGenerationKind(kind: unknown): asserts kind is GenerationKind {
@@ -121,20 +122,6 @@ function isInputForKind(kind: GenerationKind, input: unknown): boolean {
   return requiredKeysForKind(kind).some((key) => hasOwnKey(input, key))
 }
 
-function forwardedPropsFromEnvelope(
-  envelope: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!hasOwnKey(envelope, 'forwardedProps')) {
-    return {}
-  }
-
-  if (!isRecord(envelope.forwardedProps)) {
-    throw new Error('Generation envelope forwardedProps must be an object.')
-  }
-
-  return envelope.forwardedProps
-}
-
 function optionalStringField(
   envelope: Record<string, unknown>,
   key: 'threadId' | 'runId',
@@ -190,17 +177,14 @@ export function generationParamsFromBody<TKind extends GenerationKind>(
     }
   }
 
-  if (!hasOwnKey(body, 'data')) {
-    throw new Error(`Generation ${kind} envelope must include data.`)
+  const forwardedProps = body.forwardedProps
+  if (!isRecord(forwardedProps)) {
+    throw new Error('Generation envelope forwardedProps must be an object.')
   }
-
-  const input = body.data
-  assertInputForKind(kind, input)
-
-  const forwardedProps = forwardedPropsFromEnvelope(body)
+  assertInputForKind(kind, forwardedProps)
 
   return {
-    input: input as GenerationInputByKind[TKind],
+    input: forwardedProps as GenerationInputByKind[TKind],
     forwardedProps,
     ...generationIdentityFields(body),
   }
