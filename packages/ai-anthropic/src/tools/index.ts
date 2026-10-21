@@ -24,7 +24,11 @@ export {
 } from './code-execution-tool'
 export {
   computerUseTool,
+  type AnthropicComputerToolset,
+  type AnthropicComputerUse20251124Tool,
   type AnthropicComputerUseTool,
+  type ComputerToolsetConfig,
+  type ComputerUseSingleToolConfig,
   type ComputerUseToolConfig,
 } from './computer-use-tool'
 export { customTool, type CustomToolConfig } from './custom-tool'

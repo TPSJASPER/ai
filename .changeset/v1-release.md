@@ -12,6 +12,10 @@
 '@tanstack/ai-codex': major
 '@tanstack/ai-cohere': major
 '@tanstack/ai-compaction': major
+'@tanstack/ai-computer-local': major
+'@tanstack/ai-computer-playwright': major
+'@tanstack/ai-computer-sandbox': major
+'@tanstack/ai-computer-use': major
 '@tanstack/ai-devtools-core': major
 '@tanstack/ai-durable-stream': major
 '@tanstack/ai-elevenlabs': major
