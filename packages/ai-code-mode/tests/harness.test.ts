@@ -15,6 +15,7 @@ import { codeMode } from '../src/harness'
 import type {
   AnyTextAdapter,
   AnyTool,
+  Logger,
   MetadataStore,
   StreamChunk,
   TextOptions,
@@ -326,9 +327,12 @@ async function openSession(options: {
   tools?: ReadonlyArray<AnyTool>
   plugins: ReadonlyArray<HarnessPlugin>
   persistence?: HarnessPersistence
+  /** The logger of the host. Default: the console. */
+  logger?: Logger
 }) {
   const host = createHarnessHost({
     persistence: options.persistence ?? memoryPersistence(),
+    logger: options.logger,
   })
   const session = await host.open(
     defineHarness({
@@ -606,8 +610,9 @@ describe('codeMode', () => {
     await host.close()
   })
 
-  it('moves a tool that a rule asks for when include picks it, keeps a tool that needs approval or that a rule denies, and warns once', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('moves a tool that a rule asks for when include picks it, keeps a tool that needs approval or that a rule denies, and warns once to the host logger', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn')
+    const warn = vi.fn<Logger['warn']>()
     const denyDocs = definePlugin({
       name: 'test/deny-docs',
       setup: () => ({
@@ -638,6 +643,7 @@ describe('codeMode', () => {
         denyDocs,
         codeMode({ driver: fakeDriver().driver, include: () => true }),
       ],
+      logger: { debug: () => {}, info: () => {}, warn, error: () => {} },
     })
     await session.send('first')
     await session.send('second')
@@ -659,6 +665,7 @@ describe('codeMode', () => {
       '[@tanstack/ai-code-mode] include picked the tool "remove", but it needs approval, or the rules deny it. Such a tool stays a normal tool call.',
       '[@tanstack/ai-code-mode] include picked the tool "docs_deny", but it needs approval, or the rules deny it. Such a tool stays a normal tool call.',
     ])
+    expect(consoleWarn).not.toHaveBeenCalled()
   })
 
   it('moves a marked tool that include does not pick, unless a rule or an approval stops it', async () => {

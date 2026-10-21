@@ -10,7 +10,7 @@ import {
   durableTool,
 } from '@tanstack/ai-harness'
 import { createCodeMode } from './create-code-mode'
-import type { AnyTool, ToolExecutionContext } from '@tanstack/ai'
+import type { AnyTool, Logger, ToolExecutionContext } from '@tanstack/ai'
 import type {
   PermissionCallDecision,
   PermissionMode,
@@ -60,9 +60,9 @@ export interface CodeModePluginOptions extends Omit<
    * runs, it throws, or the program waits for the user to approve it.
    * `include` cannot move a tool with `needsApproval`, or a tool that the
    * rules deny: such a tool stays a normal tool call, and code mode warns
-   * once for each one that `include` picks. The rules decide in the
-   * permission mode of the session at each turn, so in plan mode a tool
-   * that edits stays a normal tool call.
+   * once to the host logger for each one that `include` picks. The rules
+   * decide in the permission mode of the session at each turn, so in plan
+   * mode a tool that edits stays a normal tool call.
    */
   include?: (tool: CodeModeTool) => boolean
   /**
@@ -352,10 +352,10 @@ export function codeMode(options: CodeModePluginOptions) {
   const { include, lazy = false, directCalls = 'remove', ...config } = options
   /** The tools that `include` picked but cannot move, warned once each. */
   const warned = new Set<string>()
-  const warnKept = (name: string) => {
+  const warnKept = (logger: Logger, name: string) => {
     if (warned.has(name)) return
     warned.add(name)
-    console.warn(
+    logger.warn(
       `[@tanstack/ai-code-mode] include picked the tool ${JSON.stringify(name)}, but it needs approval, or the rules deny it. Such a tool stays a normal tool call.`,
     )
   }
@@ -425,7 +425,7 @@ export function codeMode(options: CodeModePluginOptions) {
             if (!include) return safe(tool)
             if (!include(tool)) return false
             if (canInclude(tool)) return true
-            warnKept(tool.name)
+            warnKept(ctx.logger, tool.name)
             return false
           }
           // Two tools that map to the same identifier: the first one moves.
