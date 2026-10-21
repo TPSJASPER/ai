@@ -159,10 +159,10 @@ sequenceDiagram
 
     LLM->>Server: tool_call: send_email
     Server->>Server: Check needsApproval
-    Server->>Client: approval-requested chunk
+    Server->>Client: RUN_FINISHED with an interrupt
     Client->>Client: Show approval UI
     User->>Client: Clicks "Approve"
-    Client->>Server: POST approval response
+    Client->>Server: resolveInterrupt, new run resumes
     Server->>Tool: execute(args)
     Tool-->>Server: result
     Server->>LLM: tool_result
