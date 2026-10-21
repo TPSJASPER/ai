@@ -81,10 +81,9 @@ chat({
         tool_configuration: { enabled: true },
       },
     ],
-    // Container (skills)
+    // Container reuse. Load skills with codeExecutionTool(config, { skills }).
     container: {
       id: 'container-id',
-      skills: [{ skill_id: 'analysis', type: 'anthropic' }],
     },
     // Sampling
     top_k: 40,
