@@ -1,0 +1,83 @@
+---
+'@tanstack/ai-acp': major
+'@tanstack/ai-angular': major
+'@tanstack/ai-anthropic': major
+'@tanstack/ai-bedrock': major
+'@tanstack/ai-byteplus': major
+'@tanstack/ai-claude-code': major
+'@tanstack/ai-client': major
+'@tanstack/ai-cloudflare': major
+'@tanstack/ai-code-mode-snippets': major
+'@tanstack/ai-code-mode': major
+'@tanstack/ai-codex': major
+'@tanstack/ai-cohere': major
+'@tanstack/ai-compaction': major
+'@tanstack/ai-devtools-core': major
+'@tanstack/ai-durable-stream': major
+'@tanstack/ai-elevenlabs': major
+'@tanstack/ai-event-client': major
+'@tanstack/ai-fal': major
+'@tanstack/ai-gemini': major
+'@tanstack/ai-grok-build': major
+'@tanstack/ai-grok': major
+'@tanstack/ai-groq': major
+'@tanstack/ai-isolate-cloudflare': major
+'@tanstack/ai-isolate-daytona': major
+'@tanstack/ai-isolate-e2b': major
+'@tanstack/ai-isolate-node': major
+'@tanstack/ai-isolate-quickjs-bun': major
+'@tanstack/ai-isolate-quickjs': major
+'@tanstack/ai-llmgateway': major
+'@tanstack/ai-lovable': major
+'@tanstack/ai-mcp': major
+'@tanstack/ai-memory': major
+'@tanstack/ai-mistral': major
+'@tanstack/ai-octane': major
+'@tanstack/ai-ollama': major
+'@tanstack/ai-ollaya': major
+'@tanstack/ai-openai': major
+'@tanstack/ai-opencode': major
+'@tanstack/ai-openrouter': major
+'@tanstack/ai-perplexity': major
+'@tanstack/ai-persistence': major
+'@tanstack/ai-preact': major
+'@tanstack/ai-react': major
+'@tanstack/ai-reactor': major
+'@tanstack/ai-remix': major
+'@tanstack/ai-sandbox-blaxel': major
+'@tanstack/ai-sandbox-boxd': major
+'@tanstack/ai-sandbox-cloudflare': major
+'@tanstack/ai-sandbox-daytona': major
+'@tanstack/ai-sandbox-docker': major
+'@tanstack/ai-sandbox-e2b': major
+'@tanstack/ai-sandbox-local-process': major
+'@tanstack/ai-sandbox-railway': major
+'@tanstack/ai-sandbox-sprites': major
+'@tanstack/ai-sandbox-upstash-box': major
+'@tanstack/ai-sandbox-vercel': major
+'@tanstack/ai-sandbox': major
+'@tanstack/ai-skills': major
+'@tanstack/ai-solid': major
+'@tanstack/ai-svelte': major
+'@tanstack/ai-typesafe': major
+'@tanstack/ai-utils': major
+'@tanstack/ai-vercel-gateway': major
+'@tanstack/ai-vertex': major
+'@tanstack/ai-vue': major
+'@tanstack/ai-worldlabs': major
+'@tanstack/ai': major
+'@tanstack/openai-base': major
+'@tanstack/preact-ai-devtools': major
+'@tanstack/react-ai-devtools': major
+'@tanstack/solid-ai-devtools': major
+'@tanstack/svelte-ai-devtools': major
+---
+
+TanStack AI 1.0.0. This release removes every API that was deprecated in 0.x. Read the upgrade guide before you upgrade: https://tanstack.com/ai/latest/docs/migration/v1
+
+- Removed all `@deprecated` exports, options, fields, and type aliases. Each one has a replacement that already shipped in 0.x.
+- Removed `addToolApprovalResponse()` from `ChatClient` and every chat hook. Resolve the bound `tool-approval` interrupt with `resolveInterrupt` instead. The devtools event `tools:approval:responded` is also removed.
+- Removed the old wire formats: the CUSTOM `approval-requested` and `tool-input-available` events, the `[DONE]` SSE line, the `data` copy of `forwardedProps`, pre-binding interrupt descriptors, and the STEP events that adapters sent next to `REASONING_*` events. Use a 1.0 client with a 1.0 server.
+- Removed the readers for data saved in old 0.x formats (old Cloudflare run-log records, a bare `UIMessage[]` from client persistence, artifact records without `blobKey`).
+- Removed provider models that are shut down.
+- `@tanstack/ai-react-ui`, `@tanstack/ai-solid-ui`, and `@tanstack/ai-vue-ui` get no 1.0 release. Import from `@tanstack/ai-react/ui`, `@tanstack/ai-solid/ui`, or `@tanstack/ai-vue/ui`.
