@@ -97,7 +97,8 @@
         {
           "label": "Computer Use",
           "to": "tutorials/computer-use",
-          "addedAt": "2026-10-21"
+          "addedAt": "2026-10-21",
+          "updatedAt": "2026-10-21"
         }
       ]
     },
@@ -1033,12 +1034,14 @@
         {
           "label": "Safety Checks",
           "to": "computer-use/safety-checks",
-          "addedAt": "2026-10-20"
+          "addedAt": "2026-10-20",
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Custom Driver",
           "to": "computer-use/custom-driver",
-          "addedAt": "2026-10-20"
+          "addedAt": "2026-10-20",
+          "updatedAt": "2026-10-21"
         }
       ],
       "tab": "guides"

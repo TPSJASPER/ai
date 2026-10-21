@@ -640,7 +640,7 @@ import { openaiText } from "@tanstack/ai-openai";
 import { localShellTool } from "@tanstack/ai-openai/tools";
 
 const stream = chat({
-  adapter: openaiText("gpt-5.6"),
+  adapter: openaiText("gpt-6.1-sol"),
   messages: [{ role: "user", content: "Run the test suite and summarise failures" }],
   tools: [localShellTool()],
 });
@@ -677,7 +677,7 @@ import { openaiText } from "@tanstack/ai-openai";
 import { shellTool } from "@tanstack/ai-openai/tools";
 
 const stream = chat({
-  adapter: openaiText("gpt-5.6"),
+  adapter: openaiText("gpt-6.1-sol"),
   messages: [{ role: "user", content: "Count lines in all JS files" }],
   tools: [shellTool({ environment: { type: "local" } })],
 });
@@ -763,7 +763,7 @@ import { openaiText } from "@tanstack/ai-openai";
 import { applyPatchTool } from "@tanstack/ai-openai/tools";
 
 const stream = chat({
-  adapter: openaiText("gpt-5.6"),
+  adapter: openaiText("gpt-6.1-sol"),
   messages: [{ role: "user", content: "Fix the import paths in src/index.ts" }],
   tools: [applyPatchTool()],
 });

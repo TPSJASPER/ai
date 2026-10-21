@@ -34,7 +34,7 @@ import { openaiText } from '@tanstack/ai-openai'
 
 // TypeScript knows that gpt-5.6 accepts text and image input
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages: [{
     role: 'user',
     content: [
@@ -176,7 +176,7 @@ import { estimatedTokens } from './cost'
 const messages = [{ role: 'user' as const, content: 'Help me plan a trip.' }]
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages,
   tools,
   agentLoopStrategy: combineStrategies([
@@ -265,7 +265,7 @@ const logger: ChatMiddleware = {
 }
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages,
   middleware: [logger],
 })
@@ -330,7 +330,7 @@ import { persistence } from './persistence'
 export async function POST(request: Request) {
   const params = await chatParamsFromRequest(request)
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages: params.messages,
     threadId: params.threadId,
     runId: params.runId,
@@ -410,7 +410,7 @@ import { openaiText } from '@tanstack/ai-openai'
 export async function POST(request: Request) {
   const { messages, threadId, runId } = await chatParamsFromRequest(request)
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages,
     threadId,
     runId,
@@ -600,7 +600,7 @@ const mcp = await createMCPClient({
 
 // chat() discovers the tools and closes the client when the run ends
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages,
   mcp: { clients: [mcp] },
 })

@@ -65,7 +65,7 @@ app.post('/chat/http', async (c) => {
   }
   const body = await c.req.json()
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages: body.messages,
   })
 
@@ -213,7 +213,7 @@ To serve SSE, add this route to `server.ts` and import `toServerSentEventsRespon
 app.post('/chat/sse', async (c) => {
   const body = await c.req.json()
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages: body.messages,
   })
 

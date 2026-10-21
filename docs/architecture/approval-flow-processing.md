@@ -55,7 +55,7 @@ import { deleteProject } from './tools'
 export async function POST(request: Request) {
   const params = await chatParamsFromRequest(request)
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages: params.messages,
     threadId: params.threadId,
     runId: params.runId,

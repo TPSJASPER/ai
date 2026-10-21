@@ -73,7 +73,7 @@ const getProducts = getProductsDef.server(async ({ query }) =>
 )
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages: [{ role: 'user', content: 'Find mugs' }],
   tools: [getProducts],
 })

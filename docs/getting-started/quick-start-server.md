@@ -55,7 +55,7 @@ import { chat, streamToText } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages: [{ role: 'user', content: 'Hello!' }],
 })
 
@@ -87,7 +87,7 @@ app.post('/api/chat', async (req, res) => {
   )
 
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages,
     threadId,
     runId,
@@ -154,7 +154,7 @@ const getWeather = toolDefinition({
 })
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages: [{ role: 'user', content: 'Weather in Tokyo?' }],
   tools: [getWeather],
 })
@@ -176,7 +176,7 @@ import { openaiText } from '@tanstack/ai-openai'
 export async function POST(request: Request) {
   const { messages, threadId, runId } = await chatParamsFromRequest(request)
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages,
     threadId,
     runId,
@@ -194,7 +194,7 @@ import { chat } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
 
 const stream = chat({
-  adapter: openaiText('gpt-5.6'),
+  adapter: openaiText('gpt-6.1-sol'),
   messages: [{ role: 'user', content: 'Hello!' }],
 })
 

@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   const { messages, threadId, runId } = await chatParamsFromRequest(request)
 
   const stream = chat({
-    adapter: openaiText('gpt-5.6'),
+    adapter: openaiText('gpt-6.1-sol'),
     messages,
     threadId,
     runId,
