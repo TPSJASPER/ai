@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EventType } from '@tanstack/ai'
+import { EventType, defineAgent } from '@tanstack/ai'
 import { memoryPersistence } from '@tanstack/ai-persistence'
 import {
   createHarnessHost,
@@ -162,6 +162,39 @@ describe('the host logger', () => {
       expect.stringContaining('chat run failed'),
       expect.objectContaining({ error: failure }),
     )
+    await host.close()
+  })
+
+  it('gets the error of a model call of a child agent, and the console gets none', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const logger = recordingLogger()
+    const failure = new Error('writer down')
+    const writer = mockAdapter(failsWith(failure))
+    const plugin = definePlugin({
+      name: 'test/writer',
+      setup: () => ({
+        agents: [
+          defineAgent({
+            name: 'writer',
+            description: 'Writes',
+            run: (ctx) => ctx.chat({ adapter: writer.adapter }),
+          }),
+        ],
+      }),
+    })
+    const { host, session } = await open(logger, mockAdapter([]).adapter, [
+      plugin,
+    ])
+
+    await expect(session.agent('writer')?.start()).rejects.toThrow(
+      'writer down',
+    )
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('chat run failed'),
+      expect.objectContaining({ error: failure }),
+    )
+    expect(consoleError).not.toHaveBeenCalled()
     await host.close()
   })
 })
