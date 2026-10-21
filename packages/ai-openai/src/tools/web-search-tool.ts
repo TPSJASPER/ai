@@ -4,7 +4,6 @@ import type { WebSearchToolConfig } from '@tanstack/openai-base'
 
 export {
   type WebSearchToolConfig,
-  type WebSearchTool,
   convertWebSearchToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

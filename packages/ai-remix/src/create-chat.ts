@@ -111,7 +111,6 @@ export function createChat<
     ...(options.initialResumeSnapshot !== undefined && {
       initialResumeSnapshot: options.initialResumeSnapshot,
     }),
-    ...(options.body !== undefined && { body: options.body }),
     ...(options.forwardedProps !== undefined && {
       forwardedProps: options.forwardedProps,
     }),
@@ -232,23 +231,6 @@ export function createChat<
     await client.addToolResult(result)
   }
 
-  /** @deprecated Use a bound `tool-approval` interrupt and `interrupt.resolveInterrupt`. */
-  const addToolApprovalResponse = async (response: {
-    id: string
-    approved: boolean
-  }) => {
-    syncTools()
-    await client.addToolApprovalResponse(response)
-  }
-
-  const resumeInterrupts = async (
-    resumeItems: Array<RunAgentResumeItem>,
-    state?: ChatResumeState,
-  ) => {
-    syncTools()
-    return await client.resumeInterrupts(resumeItems, state)
-  }
-
   const resolveInterrupts = (
     resolution:
       | boolean
@@ -339,9 +321,6 @@ export function createChat<
     get interrupts() {
       return client.getSnapshot().interruptState.interrupts
     },
-    get pendingInterrupts() {
-      return client.getSnapshot().interruptState.interrupts
-    },
     get interruptErrors() {
       return client.getSnapshot().interruptState.interruptErrors
     },
@@ -368,11 +347,9 @@ export function createChat<
     setMessages,
     clear,
     addToolResult,
-    addToolApprovalResponse,
     resolveInterrupts,
     cancelInterrupts,
     retryInterrupts,
     resumeInterruptsUnsafe,
-    resumeInterrupts,
   }
 }

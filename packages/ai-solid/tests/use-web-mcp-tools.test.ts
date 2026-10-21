@@ -6,7 +6,6 @@ import {
   useChat,
   usePageWebMCPTools,
   useRegisterWebMCPTools,
-  useWebMCPTools,
 } from '../src/index'
 import { createMockConnectionAdapter } from './test-utils'
 import type { UseRegisterWebMCPToolsOptions } from '../src/index'
@@ -141,12 +140,6 @@ describe('useRegisterWebMCPTools (Solid)', () => {
       })
     }
     void checkTypes
-  })
-})
-
-describe('useWebMCPTools (Solid)', () => {
-  it('is a deprecated alias of useRegisterWebMCPTools', () => {
-    expect(useWebMCPTools).toBe(useRegisterWebMCPTools)
   })
 })
 

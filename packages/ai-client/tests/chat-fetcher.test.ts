@@ -173,7 +173,7 @@ describe('ChatClient — fetcher transport', () => {
 
     const client = new ChatClient({
       fetcher,
-      body: { provider: 'openai' },
+      forwardedProps: { provider: 'openai' },
     })
 
     await client.sendMessage('hello there')

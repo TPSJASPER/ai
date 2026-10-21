@@ -4,7 +4,6 @@ import type { FileSearchToolConfig } from '@tanstack/openai-base'
 
 export {
   type FileSearchToolConfig,
-  type FileSearchTool,
   convertFileSearchToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

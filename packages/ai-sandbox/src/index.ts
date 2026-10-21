@@ -451,7 +451,6 @@ export type { ResolveApprovalInput, ApprovalOutcome } from './approvals'
 export { watchWorkspace, diffSnapshots } from './watch'
 export type {
   SandboxFileEvent,
-  FileEvent,
   FileEventType,
   WatchOptions,
   SandboxWatchHandle,

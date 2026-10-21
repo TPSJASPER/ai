@@ -63,14 +63,6 @@ describe('Gemini per-model image size gating', () => {
         size: '1:1_1k',
       })
     })
-
-    it('applies the same set to the shut-down -preview alias', () => {
-      createImageOptions({
-        adapter: createGeminiImage('gemini-3.1-flash-image-preview', apiKey),
-        prompt: 'a wide banner',
-        size: '1:8_512',
-      })
-    })
   })
 
   describe('gemini-nano-banana-2.1 — 14 ratios × 1K/2K/4K', () => {
@@ -165,53 +157,6 @@ describe('Gemini per-model image size gating', () => {
         size: '1:1_512',
       })
     })
-
-    it('applies the same set to the shut-down -preview alias', () => {
-      createImageOptions({
-        adapter: createGeminiImage('gemini-3-pro-image-preview', apiKey),
-        prompt: 'a portrait',
-        size: '4:5_2K',
-      })
-    })
-  })
-
-  describe('gemini-2.5-flash-image — bare aspect ratio, no resolution', () => {
-    it('accepts a bare ratio', () => {
-      createImageOptions({
-        adapter: createGeminiImage('gemini-2.5-flash-image', apiKey),
-        prompt: 'a landscape',
-        size: '16:9',
-      })
-      createImageOptions({
-        adapter: createGeminiImage('gemini-2.5-flash-image', apiKey),
-        prompt: 'a portrait',
-        size: '4:5',
-      })
-    })
-
-    it('rejects any resolution suffix', () => {
-      createImageOptions({
-        adapter: createGeminiImage('gemini-2.5-flash-image', apiKey),
-        prompt: 'a landscape',
-        // @ts-expect-error - Google documents no image_size for this model
-        size: '16:9_2K',
-      })
-      createImageOptions({
-        adapter: createGeminiImage('gemini-2.5-flash-image', apiKey),
-        prompt: 'a landscape',
-        // @ts-expect-error - Google documents no image_size for this model
-        size: '16:9_1K',
-      })
-    })
-
-    it('rejects the extreme banner ratios', () => {
-      createImageOptions({
-        adapter: createGeminiImage('gemini-2.5-flash-image', apiKey),
-        prompt: 'a wide strip',
-        // @ts-expect-error - 8:1 is Gemini 3.1 Flash Image only
-        size: '8:1',
-      })
-    })
   })
 
   describe('Imagen models keep pixel sizes', () => {
@@ -239,20 +184,7 @@ describe('Gemini per-model image size gating', () => {
 })
 
 describe('Gemini image size map shape assertions', () => {
-  it('maps each GA id to its own size set', () => {
-    expectTypeOf<
-      GeminiImageModelSizeByName['gemini-3.1-flash-image']
-    >().toEqualTypeOf<
-      GeminiImageModelSizeByName['gemini-3.1-flash-image-preview']
-    >()
-    expectTypeOf<
-      GeminiImageModelSizeByName['gemini-3-pro-image']
-    >().toEqualTypeOf<
-      GeminiImageModelSizeByName['gemini-3-pro-image-preview']
-    >()
-  })
-
-  it('gives the four native models four different size sets', () => {
+  it('gives the native models different size sets', () => {
     expectTypeOf<
       GeminiImageModelSizeByName['gemini-3.1-flash-image']
     >().not.toEqualTypeOf<
@@ -261,7 +193,7 @@ describe('Gemini image size map shape assertions', () => {
     expectTypeOf<
       GeminiImageModelSizeByName['gemini-3-pro-image']
     >().not.toEqualTypeOf<
-      GeminiImageModelSizeByName['gemini-2.5-flash-image']
+      GeminiImageModelSizeByName['gemini-nano-banana-2.1']
     >()
   })
 })
@@ -273,10 +205,10 @@ beforeAll(() => {
 })
 
 describe('Gemini per-model image modelOptions gating', () => {
-  describe('gemini-3.1-flash-image-preview — native (Interactions API)', () => {
+  describe('gemini-3.1-flash-image — native (Interactions API)', () => {
     it('accepts the native option set', () => {
       createImageOptions({
-        adapter: geminiImage('gemini-3.1-flash-image-preview'),
+        adapter: geminiImage('gemini-3.1-flash-image'),
         prompt: 'a quiet harbour',
         modelOptions: {
           seed: 7,
@@ -292,7 +224,7 @@ describe('Gemini per-model image modelOptions gating', () => {
 
     it('rejects Vertex-only imageConfig fields', () => {
       createImageOptions({
-        adapter: geminiImage('gemini-3.1-flash-image-preview'),
+        adapter: geminiImage('gemini-3.1-flash-image'),
         prompt: 'a quiet harbour',
         modelOptions: {
           imageConfig: {
@@ -311,7 +243,7 @@ describe('Gemini per-model image modelOptions gating', () => {
       // `personGeneration` would reject a string literal on either shape and
       // would still "pass" with the split reverted.
       createImageOptions({
-        adapter: geminiImage('gemini-3.1-flash-image-preview'),
+        adapter: geminiImage('gemini-3.1-flash-image'),
         prompt: 'a quiet harbour',
         modelOptions: {
           // @ts-expect-error - negativePrompt is a GenerateImagesConfig (Imagen) field
@@ -320,7 +252,7 @@ describe('Gemini per-model image modelOptions gating', () => {
       })
 
       createImageOptions({
-        adapter: geminiImage('gemini-3.1-flash-image-preview'),
+        adapter: geminiImage('gemini-3.1-flash-image'),
         prompt: 'a quiet harbour',
         modelOptions: {
           // @ts-expect-error - aspectRatio is Imagen-only; native models use size / imageConfig
@@ -331,7 +263,7 @@ describe('Gemini per-model image modelOptions gating', () => {
 
     it('rejects responseModalities — the adapter owns it', () => {
       createImageOptions({
-        adapter: geminiImage('gemini-3.1-flash-image-preview'),
+        adapter: geminiImage('gemini-3.1-flash-image'),
         prompt: 'a quiet harbour',
         modelOptions: {
           // @ts-expect-error - responseModalities is a protected adapter default
@@ -380,7 +312,7 @@ describe('Gemini per-model image modelOptions gating', () => {
 describe('Gemini image provider options shape assertions', () => {
   describe('native models take Interactions image fields', () => {
     type Options =
-      GeminiImageModelProviderOptionsByName['gemini-3.1-flash-image-preview']
+      GeminiImageModelProviderOptionsByName['gemini-3.1-flash-image']
 
     it('has safetySettings', () => {
       expectTypeOf<Options>().toHaveProperty('safetySettings')
@@ -434,16 +366,6 @@ describe('Gemini image provider options shape assertions', () => {
     it('gemini-3.1-flash-lite-image', () => {
       expectTypeOf<
         GeminiImageModelProviderOptionsByName['gemini-3.1-flash-lite-image']
-      >().toHaveProperty('imageConfig')
-    })
-    it('gemini-3-pro-image-preview', () => {
-      expectTypeOf<
-        GeminiImageModelProviderOptionsByName['gemini-3-pro-image-preview']
-      >().toHaveProperty('imageConfig')
-    })
-    it('gemini-2.5-flash-image', () => {
-      expectTypeOf<
-        GeminiImageModelProviderOptionsByName['gemini-2.5-flash-image']
       >().toHaveProperty('imageConfig')
     })
   })

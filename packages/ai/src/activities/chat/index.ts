@@ -639,8 +639,6 @@ export interface TextActivityOptions<
    * catalog. Optional — defaults to `{ includeDescription: 'none' }`.
    */
   lazyToolsConfig?: LazyToolsConfig
-  /** Unique conversation identifier for tracking */
-  conversationId?: TextOptions['conversationId']
   /** Thread/conversation ID for AG-UI protocol. Auto-generated if not provided. */
   threadId?: TextOptions['threadId']
   /**
@@ -658,7 +656,7 @@ export interface TextActivityOptions<
 
   /**
    * Automatic prompt caching. Default `'short'`. `'none'` turns it off.
-   * The key defaults to the `threadId` or `conversationId` that you give.
+   * The key defaults to the `threadId` that you give.
    *
    * @example
    * ```ts
@@ -1227,13 +1225,7 @@ class TextEngine<
       ? { signal: config.params.abortController.signal }
       : undefined
     this.effectiveSignal = config.params.abortController?.signal
-    // `conversationId` is the legacy alias of `threadId` — accept it
-    // as a fallback so `chat({ conversationId })` keeps working, with
-    // explicit `threadId` winning when both are set.
-    this.threadId =
-      config.params.threadId ||
-      config.params.conversationId ||
-      this.createId('thread')
+    this.threadId = config.params.threadId || this.createId('thread')
     this.runIdOverride = config.params.runId
     this.parentRunIdOverride = config.params.parentRunId
     this.subagentRunIdOverride = config.params.subagentRunId
@@ -1259,9 +1251,6 @@ class TextEngine<
       subagentName: config.params.subagentName,
       parentSubagentRunId: config.params.parentSubagentRunId,
       threadId: this.threadId,
-      // Legacy alias kept on the ctx so middleware that reads
-      // `ctx.conversationId` keeps working. Always equals `threadId`.
-      conversationId: this.threadId,
       phase: 'init',
       iteration: 0,
       chunkIndex: 0,
@@ -2164,11 +2153,9 @@ class TextEngine<
       case 'RUN_ERROR':
         this.handleRunErrorEvent(chunk)
         break
-      case 'STEP_STARTED':
-        this.handleStepStartedEvent()
-        break
-      case 'STEP_FINISHED':
-        this.handleStepFinishedEvent(chunk)
+      case 'REASONING_MESSAGE_START':
+        // A new reasoning message starts a new thinking step.
+        this.finalizeCurrentThinkingStep()
         break
 
       case 'REASONING_MESSAGE_CONTENT':
@@ -2180,7 +2167,6 @@ class TextEngine<
         break
 
       case 'REASONING_START':
-      case 'REASONING_MESSAGE_START':
       case 'REASONING_MESSAGE_END':
       case 'REASONING_END':
         // No special handling needed
@@ -2485,18 +2471,6 @@ class TextEngine<
       this.currentThinkingSignature === ''
     ) {
       this.turnParts.push({ type: 'thinking', index: -1 })
-    }
-  }
-
-  private handleStepStartedEvent(): void {
-    this.finalizeCurrentThinkingStep()
-  }
-
-  private handleStepFinishedEvent(chunk: AdapterYieldChunk): void {
-    if (typeof chunk.signature === 'string' && chunk.signature !== '') {
-      this.noteThinkingStepPosition()
-      this.currentThinkingSignature = chunk.signature
-      this.currentThinkingRedacted = isRedactedThinkingId(chunk.stepId)
     }
   }
 
@@ -4744,7 +4718,7 @@ class TextEngine<
         //  - RUN_FINISHED would overwrite `finishedEvent` + `lastFinishReason`
         //    (finalization's 'stop' would overwrite the agent-loop's real
         //    finish reason)
-        //  - STEP_FINISHED would pollute `currentThinkingContent`
+        //  - REASONING_* events would pollute `currentThinkingContent`
         // Finalization is a separate phase from the agent loop; its state must
         // not cross-contaminate. The explicit branches below capture the only
         // bits we actually need from this stream.
@@ -5938,20 +5912,19 @@ type RuntimeTextActivityOptions<
 
 /**
  * Resolve the `promptCache` option once, before chat() makes up any ids. The
- * key is the option key, else the caller's threadId or conversationId. A
- * made-up threadId is never the key: a random key splits OpenAI cache routing.
+ * key is the option key, else the caller's threadId. A made-up threadId is
+ * never the key: a random key splits OpenAI cache routing.
  */
 function resolvePromptCache(options: {
   promptCache?: PromptCacheOptions
   threadId?: string
-  conversationId?: string
 }): ResolvedPromptCache {
   const option: Exclude<PromptCacheOptions, string> | undefined =
     typeof options.promptCache === 'string'
       ? { retention: options.promptCache }
       : options.promptCache
   // `||` on purpose: an empty string is no key.
-  const key = option?.key || options.threadId || options.conversationId
+  const key = option?.key || options.threadId
   return {
     retention: option?.retention ?? 'short',
     ...(key ? { key } : {}),

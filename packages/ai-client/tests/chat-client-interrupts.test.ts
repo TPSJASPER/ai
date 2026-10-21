@@ -1200,39 +1200,6 @@ describe('InterruptManager transactions', () => {
     ).toBe(true)
   })
 
-  it('resolves pre-binding client-tool fallback with raw output', () => {
-    const { manager, submit } = createManager()
-    manager.hydrate({
-      threadId: 'thread-1',
-      interruptedRunId: 'run-1',
-      generation: 1,
-      interrupts: [
-        {
-          id: 'client-degraded',
-          reason: 'tanstack:client_tool_execution',
-          toolCallId: 'call-degraded',
-          metadata: {
-            kind: 'client_tool',
-            toolName: 'lookup',
-            input: {},
-          },
-        },
-      ],
-    })
-    // Schema drift / missing tool → public generic item
-    expect(manager.getInterrupts()[0]?.kind).toBe('generic')
-    expect(
-      manager.resolveClientToolOutput('call-degraded', { accountId: 'a' }),
-    ).toBe(true)
-    expect(submit.mock.calls[0]?.[0].resolutions).toEqual([
-      {
-        interruptId: 'client-degraded',
-        status: 'resolved',
-        payload: { accountId: 'a' },
-      },
-    ])
-  })
-
   it('supersedes a server batch error set without dropping local client, transport, or item errors', async () => {
     const firstErrors: ReadonlyArray<InterruptSubmissionError> = [
       {
@@ -1493,8 +1460,6 @@ describe('ChatClient native interrupts', () => {
       client.getInterruptState(),
       { source: 'hydrate' },
     )
-    const state = onInterruptStateChange.mock.lastCall?.[0]
-    expect(state?.interrupts).toBe(state?.pendingInterrupts)
   })
 
   it('reports source hydrate when a client-tool interrupt is restored', () => {
@@ -1619,15 +1584,16 @@ describe('ChatClient native interrupts', () => {
             delta: '{}',
             timestamp: Date.now(),
           }
-          yield {
-            type: EventType.CUSTOM,
-            name: 'tool-input-available',
-            value: {
-              toolCallId: 'call-1',
-              toolName: 'lookup',
-              input: {},
-            },
-            timestamp: Date.now(),
+          const binding: InterruptBinding = {
+            v: INTERRUPT_BINDING_VERSION,
+            kind: 'client-tool-execution',
+            interruptId: 'client-1',
+            interruptedRunId: runId,
+            generation: 0,
+            toolName: 'lookup',
+            toolCallId: 'call-1',
+            outputSchemaHash,
+            responseSchemaHash,
           }
           yield {
             type: EventType.RUN_FINISHED,
@@ -1637,20 +1603,15 @@ describe('ChatClient native interrupts', () => {
             outcome: {
               type: 'interrupt',
               interrupts: [
-                descriptor(
-                  {
-                    v: INTERRUPT_BINDING_VERSION,
-                    kind: 'client-tool-execution',
-                    interruptId: 'client-1',
-                    interruptedRunId: runId,
-                    generation: 0,
+                descriptor(binding, {
+                  responseSchema,
+                  metadata: {
+                    kind: 'client_tool',
                     toolName: 'lookup',
-                    toolCallId: 'call-1',
-                    outputSchemaHash,
-                    responseSchemaHash,
+                    input: {},
+                    'tanstack:interruptBinding': binding,
                   },
-                  { responseSchema },
-                ),
+                }),
               ],
             },
           }
@@ -1796,9 +1757,7 @@ describe('ChatClient native interrupts', () => {
     )
     const state = client.getInterruptState()
     expect(Object.isFrozen(state)).toBe(true)
-    expect(state.interrupts).toBe(state.pendingInterrupts)
     expect(client.getInterrupts()).toBe(state.interrupts)
-    expect(client.getPendingInterrupts()).toBe(state.interrupts)
     const item = state.interrupts[0]
     if (item?.kind !== 'generic') throw new Error('Expected generic interrupt')
     item.resolveInterrupt({ answer: 42 })

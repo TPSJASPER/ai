@@ -722,8 +722,7 @@ async function* runStreamingVideoGeneration<
       }
 
       if (statusResult.status === 'completed') {
-        const video = await (adapter.getVideo?.(jobResult.jobId) ??
-          adapter.getVideoUrl(jobResult.jobId))
+        const video = await adapter.getVideo(jobResult.jobId)
 
         logger.output(
           `activity=generateVideo jobId=${jobResult.jobId} status=completed`,
@@ -993,7 +992,7 @@ export async function getVideoJobStatus<
     // surface as itself, not be relabelled "failed to get video URL" and then
     // re-reported to the very middleware that threw.
     try {
-      video = await (adapter.getVideo?.(jobId) ?? adapter.getVideoUrl(jobId))
+      video = await adapter.getVideo(jobId)
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to get video URL'

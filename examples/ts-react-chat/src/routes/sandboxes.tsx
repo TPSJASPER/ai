@@ -384,7 +384,7 @@ function SandboxesPage() {
 
   const { messages, sendMessage, isLoading, stop, error } = useChat({
     connection: fetchServerSentEvents('/api/sandbox-triage'),
-    body: {
+    forwardedProps: {
       harness,
       provider,
       issueUrl,

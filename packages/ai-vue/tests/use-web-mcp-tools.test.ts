@@ -5,11 +5,7 @@ import { toolDefinition } from '@tanstack/ai/client'
 import { ChatClient } from '@tanstack/ai-client'
 import { useChat } from '../src/use-chat'
 import { createMockConnectionAdapter } from './test-utils'
-import {
-  usePageWebMCPTools,
-  useRegisterWebMCPTools,
-  useWebMCPTools,
-} from '../src/index'
+import { usePageWebMCPTools, useRegisterWebMCPTools } from '../src/index'
 import type { UseRegisterWebMCPToolsOptions } from '../src/index'
 
 interface RegisteredWebMCPTool {
@@ -148,12 +144,6 @@ describe('useRegisterWebMCPTools (Vue)', () => {
       })
     }
     void checkTypes
-  })
-})
-
-describe('useWebMCPTools (Vue)', () => {
-  it('is a deprecated alias of useRegisterWebMCPTools', () => {
-    expect(useWebMCPTools).toBe(useRegisterWebMCPTools)
   })
 })
 

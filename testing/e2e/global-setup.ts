@@ -737,8 +737,7 @@ function rejectGeminiImageRequest(
 
 /**
  * Mounts Gemini native image calls on the Interactions API for
- * `gemini-3.1-flash-image`, `gemini-nano-banana-2.1` and
- * `gemini-2.5-flash-image`.
+ * `gemini-3.1-flash-image` and `gemini-nano-banana-2.1`.
  *
  * The adapter posts `POST /v1beta/interactions` with `response_format.type`
  * `image`. This mount reads that body so two specs can assert on the wire:
@@ -752,7 +751,6 @@ function geminiNativeImageMount(): Mountable {
   const NATIVE_IMAGE_MODELS = new Set([
     'gemini-3.1-flash-image',
     'gemini-nano-banana-2.1',
-    'gemini-2.5-flash-image',
   ])
 
   // Coupled to the `size` values in api.gemini-image-ga-models.ts.
@@ -883,15 +881,6 @@ function geminiNativeImageMount(): Mountable {
             'generation_config.thinking_level must be "low".',
           )
         }
-        if (
-          model === 'gemini-2.5-flash-image' &&
-          format.image_size !== undefined
-        ) {
-          return rejectGeminiImageRequest(
-            res,
-            `${model}: response_format.image_size must be absent.`,
-          )
-        }
       } else {
         const aspectRatio = format.aspect_ratio
         const imageSize = format.image_size
@@ -901,17 +890,10 @@ function geminiNativeImageMount(): Mountable {
             `${model}: response_format.aspect_ratio must be "${EXPECTED_ASPECT_RATIO}", got ${JSON.stringify(aspectRatio)}.`,
           )
         }
-        if (model !== 'gemini-2.5-flash-image') {
-          if (imageSize !== EXPECTED_FLASH_IMAGE_SIZE) {
-            return rejectGeminiImageRequest(
-              res,
-              `${model}: response_format.image_size must be "${EXPECTED_FLASH_IMAGE_SIZE}", got ${JSON.stringify(imageSize)}.`,
-            )
-          }
-        } else if (imageSize !== undefined) {
+        if (imageSize !== EXPECTED_FLASH_IMAGE_SIZE) {
           return rejectGeminiImageRequest(
             res,
-            `${model}: response_format.image_size must be absent.`,
+            `${model}: response_format.image_size must be "${EXPECTED_FLASH_IMAGE_SIZE}", got ${JSON.stringify(imageSize)}.`,
           )
         }
       }

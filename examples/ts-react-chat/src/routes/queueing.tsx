@@ -175,17 +175,17 @@ function QueueingPage() {
   // three via their sendMessage functions.
   const fifo = useChat({
     connection: fetchServerSentEvents('/api/tanchat'),
-    body,
+    forwardedProps: body,
     queue: FIFO.config,
   })
   const interrupt = useChat({
     connection: fetchServerSentEvents('/api/tanchat'),
-    body,
+    forwardedProps: body,
     queue: INTERRUPT.config,
   })
   const batch = useChat({
     connection: fetchServerSentEvents('/api/tanchat'),
-    body,
+    forwardedProps: body,
     queue: BATCH.config,
   })
 

@@ -54,7 +54,6 @@ export async function* processConverseStream(
     number,
     {
       id: string
-      text: string
       signature: string
       bytes: Array<Uint8Array>
       redacted: boolean
@@ -111,11 +110,6 @@ export async function* processConverseStream(
       entityId: reasoning.id,
       subtype: 'message',
       encryptedValue: encrypted,
-      ...(reasoning.redacted && {
-        stepId: reasoning.id.startsWith('redacted_thinking-')
-          ? reasoning.id
-          : 'redacted_thinking-' + reasoning.id,
-      }),
       timestamp: Date.now(),
     }
   }
@@ -126,14 +120,6 @@ export async function* processConverseStream(
       yield* encryptedReasoning(blockIndex)
       if (reasoning.closed) continue
       reasoning.closed = true
-      yield {
-        type: EventType.STEP_FINISHED,
-        stepId: reasoning.id,
-        stepName: reasoning.id,
-        delta: '',
-        content: reasoning.text,
-        timestamp: Date.now(),
-      }
       yield {
         type: EventType.REASONING_MESSAGE_END,
         messageId: reasoning.id,
@@ -211,20 +197,12 @@ export async function* processConverseStream(
             (fragment.redactedContent?.length ?? 0) > 0
           reasoning = {
             id: (redacted ? 'redacted_thinking-' : '') + newMessageId(),
-            text: '',
             signature: '',
             bytes: [],
             redacted,
             closed: false,
           }
           reasoningByIndex.set(index, reasoning)
-          yield {
-            type: EventType.STEP_STARTED,
-            stepId: reasoning.id,
-            stepName: reasoning.id,
-            stepType: 'thinking',
-            timestamp: Date.now(),
-          }
           yield {
             type: EventType.REASONING_MESSAGE_START,
             messageId: reasoning.id,
@@ -237,7 +215,6 @@ export async function* processConverseStream(
           'text' in fragment &&
           fragment.text !== undefined
         ) {
-          reasoning.text += fragment.text
           yield {
             type: EventType.REASONING_MESSAGE_CONTENT,
             messageId: reasoning.id,
@@ -258,7 +235,6 @@ export async function* processConverseStream(
         ) {
           if (!reasoning.redacted) reasoning.encrypted = undefined
           reasoning.redacted = true
-          reasoning.text = ''
           reasoning.signature = ''
           reasoning.bytes.push(fragment.redactedContent)
           yield* encryptedReasoning(index)

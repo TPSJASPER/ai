@@ -755,7 +755,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
     let accumulatedReasoning = ''
     let hasEmittedTextMessageStart = false
     let reasoningMessageId: string | undefined
-    let stepId: string | undefined
     let hasClosedReasoning = false
     let model: string = chatOptions.model
     let responseId: string | undefined
@@ -779,18 +778,7 @@ export abstract class OpenAIBaseResponsesTextAdapter<
           model,
           timestamp: Date.now(),
         }
-        if (stepId) {
-          yield {
-            type: EventType.STEP_FINISHED,
-            stepName: stepId,
-            stepId,
-            model,
-            timestamp: Date.now(),
-            content: accumulatedReasoning,
-          }
-        }
         reasoningMessageId = undefined
-        stepId = undefined
         hasClosedReasoning = false
       }
     }.bind(this)
@@ -800,7 +788,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
     }): Generator<AdapterYieldChunk> {
       if (reasoningMessageId) return
       reasoningMessageId = generateId(this.name)
-      stepId = generateId(this.name)
       yield {
         type: EventType.REASONING_START,
         messageId: reasoningMessageId,
@@ -813,14 +800,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
         role: 'reasoning' as const,
         model,
         timestamp: Date.now(),
-      }
-      yield {
-        type: EventType.STEP_STARTED,
-        stepName: stepId,
-        stepId,
-        model,
-        timestamp: Date.now(),
-        stepType: 'thinking',
       }
     }.bind(this)
 
@@ -1393,7 +1372,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
         this.makeStructuredOutputCompatibleWithMap(schema, required),
     )
     let accumulatedContent = ''
-    let accumulatedReasoning = ''
 
     // Track if we've been streaming deltas to avoid duplicating content from done events
     let hasStreamedContentDeltas = false
@@ -1404,7 +1382,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
     let responseId: string | undefined
 
     // AG-UI lifecycle tracking
-    let stepId: string | null = null
     let hasEmittedTextMessageStart = false
     let reasoningMessageId: string | undefined
     let reasoningItemId: string | undefined
@@ -1506,7 +1483,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
     const openReasoning = function* (): Generator<AdapterYieldChunk> {
       if (reasoningMessageId) return
       reasoningMessageId = generateId(adapterName)
-      stepId = generateId(adapterName)
       const timestamp = Date.now()
       const currentModel = emitModel()
       yield {
@@ -1521,14 +1497,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
         role: 'reasoning' as const,
         model: currentModel,
         timestamp,
-      }
-      yield {
-        type: EventType.STEP_STARTED,
-        stepName: stepId,
-        stepId,
-        model: currentModel,
-        timestamp,
-        stepType: 'thinking',
       }
     }
 
@@ -1562,35 +1530,23 @@ export abstract class OpenAIBaseResponsesTextAdapter<
         model: currentModel,
         timestamp,
       }
-      if (stepId) {
-        closedReasoningMessageId = reasoningMessageId
+      closedReasoningMessageId = reasoningMessageId
+      // The signature belongs to the reasoning message, so an AG-UI client
+      // finds that message by `entityId`.
+      if (signature) {
         yield {
-          type: EventType.STEP_FINISHED,
-          stepName: stepId,
-          stepId,
+          type: EventType.REASONING_ENCRYPTED_VALUE,
+          subtype: 'message' as const,
+          entityId: reasoningMessageId,
+          encryptedValue: signature,
           model: currentModel,
           timestamp,
-          content: accumulatedReasoning,
-        }
-        // The signature belongs to the reasoning message, not the step, so
-        // an AG-UI client finds that message by `entityId`.
-        if (signature) {
-          yield {
-            type: EventType.REASONING_ENCRYPTED_VALUE,
-            subtype: 'message' as const,
-            entityId: reasoningMessageId,
-            encryptedValue: signature,
-            model: currentModel,
-            timestamp,
-          }
         }
       }
       reasoningMessageId = undefined
       reasoningItemId = undefined
       reasoningEncryptedContent = undefined
-      stepId = null
       hasClosedReasoning = false
-      accumulatedReasoning = ''
     }
 
     // A stateless stream (the ChatGPT plan route) can stream a tool call, then
@@ -1667,7 +1623,6 @@ export abstract class OpenAIBaseResponsesTextAdapter<
       if (!text) return
       yield* openReasoning()
       if (!reasoningMessageId) return
-      accumulatedReasoning += text
       hasStreamedReasoningDeltas = true
       yield {
         type: EventType.REASONING_MESSAGE_CONTENT,
@@ -1754,9 +1709,7 @@ export abstract class OpenAIBaseResponsesTextAdapter<
           hasEmittedTextMessageStart = false
           reasoningMessageId = undefined
           hasClosedReasoning = false
-          stepId = null
           accumulatedContent = ''
-          accumulatedReasoning = ''
         }
 
         // response.failed and response.incomplete are TERMINAL events for

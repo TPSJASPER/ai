@@ -9,9 +9,9 @@ import type {
  * The DEFAULT blob-store key a generation artifact's bytes are stored under,
  * used when `withGenerationPersistence` is given no `storageKey` mapper.
  *
- * Reads go through {@link resolveArtifactBlobKey} instead: a record written with
- * a custom `storageKey` carries its real key in `blobKey`, and recomputing the
- * default would look in the wrong place.
+ * Reads use the record's `blobKey` instead: a record written with a custom
+ * `storageKey` carries its real key there, and recomputing the default would
+ * look in the wrong place.
  *
  * @internal
  */
@@ -19,18 +19,6 @@ export function artifactBlobKey(
   ref: Pick<ArtifactRecord, 'runId' | 'artifactId'>,
 ): string {
   return `artifacts/${ref.runId}/${ref.artifactId}`
-}
-
-/**
- * The blob-store key to read an artifact's bytes from: the key recorded when it
- * was written, falling back to the default convention for records written
- * before `blobKey` existed.
- *
- * The fallback is what makes `blobKey` a non-breaking addition — and why the
- * default convention can never be changed retroactively without one.
- */
-export function resolveArtifactBlobKey(record: ArtifactRecord): string {
-  return record.blobKey ?? artifactBlobKey(record)
 }
 
 /**
@@ -69,9 +57,6 @@ export async function retrieveBlob(
       : artifact
   if (!record) return null
 
-  const blob = await persistence.stores.blobs?.get(
-    resolveArtifactBlobKey(record),
-    options,
-  )
+  const blob = await persistence.stores.blobs?.get(record.blobKey, options)
   return blob ?? null
 }

@@ -2170,21 +2170,6 @@ class ChatDevtoolsAwareEventEmitter extends DefaultChatClientEventEmitter {
     this.afterEmit()
   }
 
-  override toolApprovalResponded(
-    approvalId: string,
-    toolCallId: string,
-    approved: boolean,
-    context?: ChatClientRunEventContext,
-  ): void {
-    super.toolApprovalResponded(
-      approvalId,
-      toolCallId,
-      approved,
-      context ?? this.helper.getCurrentRunEventContext(),
-    )
-    this.afterEmit()
-  }
-
   // -- methods without context (just auto-emit snapshot) -------------------
 
   override clientCreated(initialMessageCount: number): void {

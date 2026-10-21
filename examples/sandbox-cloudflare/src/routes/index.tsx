@@ -385,7 +385,7 @@ function SandboxAgentPage() {
 
   const { messages, sendMessage, isLoading, stop, clear } = useChat({
     connection: fetchServerSentEvents('/api/run'),
-    body,
+    forwardedProps: body,
     onChunk: (chunk) => {
       const sessionId = readHarnessSessionId(chunk, harness)
       if (sessionId !== undefined) setHarnessSessionId(sessionId)

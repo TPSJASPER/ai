@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { EventType, withTanstackMetadata } from '@tanstack/ai/client'
 import { ChatClient } from '../src/chat-client'
 import {
-  createApprovalToolCallChunks,
   createCustomEventChunks,
   createMockConnectionAdapter,
   createPushableSubscribeConnection,
@@ -40,7 +39,9 @@ describe('ChatClient', () => {
     storedMessages?: Array<UIMessage> | null,
   ): ChatClientPersistence {
     return {
-      getItem: vi.fn(() => storedMessages),
+      getItem: vi.fn(() =>
+        storedMessages ? { messages: storedMessages } : storedMessages,
+      ),
       setItem: vi.fn(),
       removeItem: vi.fn(),
     }
@@ -395,7 +396,7 @@ describe('ChatClient', () => {
       const adapter = createMockConnectionAdapter()
       const onMessagesChange = vi.fn()
       const persistence = {
-        getItem: vi.fn(() => Promise.resolve([persistedMessage])),
+        getItem: vi.fn(() => Promise.resolve({ messages: [persistedMessage] })),
         setItem: vi.fn(),
         removeItem: vi.fn(),
       }
@@ -419,7 +420,7 @@ describe('ChatClient', () => {
 
     it('should ignore async persistence hydration after local message changes', async () => {
       const adapter = createMockConnectionAdapter()
-      const deferred = createDeferred<Array<UIMessage>>()
+      const deferred = createDeferred<ChatPersistedState>()
       const persistence = {
         getItem: vi.fn(() => deferred.promise),
         setItem: vi.fn(),
@@ -442,7 +443,7 @@ describe('ChatClient', () => {
         },
       ])
 
-      deferred.resolve([persistedMessage])
+      deferred.resolve({ messages: [persistedMessage] })
       await new Promise((resolve) => setTimeout(resolve, 0))
 
       expect(client.getMessages()).toEqual([
@@ -2650,7 +2651,7 @@ describe('ChatClient', () => {
         content: 'Notify me',
       })
 
-      expect(client.getPendingInterrupts()).toEqual([
+      expect(client.getInterrupts()).toEqual([
         expect.objectContaining({ id: 'interrupt-1' }),
       ])
       expect(client.getResumeState()?.runId).toBeTruthy()
@@ -2705,7 +2706,7 @@ describe('ChatClient', () => {
         content: 'Notify me',
       })
 
-      expect(client.getPendingInterrupts()).toEqual([
+      expect(client.getInterrupts()).toEqual([
         expect.objectContaining({ id: 'interrupt-direct' }),
       ])
       expect(client.getResumeState()?.runId).toBeTruthy()
@@ -3821,7 +3822,7 @@ describe('ChatClient', () => {
       ])
     })
 
-    it('should merge per-message body with base body', async () => {
+    it('should merge per-message body with forwardedProps', async () => {
       const chunks = createTextChunks('Response')
       let capturedData: Record<string, any> | undefined
       const adapter = createMockConnectionAdapter({
@@ -3833,7 +3834,7 @@ describe('ChatClient', () => {
 
       const client = new ChatClient({
         connection: adapter,
-        body: { model: 'gpt-5.5', temperature: 0.7 },
+        forwardedProps: { model: 'gpt-5.5', temperature: 0.7 },
       })
 
       await client.sendMessage('Hello', {
@@ -3859,7 +3860,7 @@ describe('ChatClient', () => {
 
       const client = new ChatClient({
         connection: adapter,
-        body: { model: 'gpt-5.5', temperature: 0.7 },
+        forwardedProps: { model: 'gpt-5.5', temperature: 0.7 },
       })
 
       // Framework hooks call sendMessage(content, undefined, sendOptions),
@@ -3873,7 +3874,7 @@ describe('ChatClient', () => {
       expect(capturedData?.['maxTokens']).toBe(100)
     })
 
-    it('merges chat body, positional body, and sendOptions.body with sendOptions.body winning conflicts', async () => {
+    it('merges forwardedProps, positional body, and sendOptions.body with sendOptions.body winning conflicts', async () => {
       const chunks = createTextChunks('Response')
       let capturedData: Record<string, unknown> | undefined
       const adapter = createMockConnectionAdapter({
@@ -3885,7 +3886,7 @@ describe('ChatClient', () => {
 
       const client = new ChatClient({
         connection: adapter,
-        body: { a: 1, b: 1, c: 1 },
+        forwardedProps: { a: 1, b: 1, c: 1 },
       })
 
       await client.sendMessage(
@@ -3933,7 +3934,7 @@ describe('ChatClient', () => {
 
       const client = new ChatClient({
         connection: adapter,
-        body: { provider: 'openai' },
+        forwardedProps: { provider: 'openai' },
       })
 
       await client.sendMessage('Hello', undefined, {
@@ -3967,79 +3968,6 @@ describe('ChatClient', () => {
 
       expect(capturedData?.['provider']).toBe('openai')
       expect(capturedData?.['model']).toBe('gpt-5.5')
-    })
-
-    it('updateOptions({ forwardedProps }) leaves a previously-set body intact', async () => {
-      const chunks = createTextChunks('Response')
-      const captures: Array<Record<string, any> | undefined> = []
-      const adapter = createMockConnectionAdapter({
-        chunks,
-        onConnect: (_messages, data) => {
-          captures.push(data)
-        },
-      })
-
-      const client = new ChatClient({
-        connection: adapter,
-        body: { provider: 'openai' },
-        forwardedProps: { model: 'gpt-5.5' },
-      })
-
-      // Replace only `forwardedProps` — `body` must survive.
-      client.updateOptions({ forwardedProps: { model: 'gpt-5.5' } })
-
-      await client.sendMessage('Hi')
-      expect(captures[0]?.['provider']).toBe('openai')
-      expect(captures[0]?.['model']).toBe('gpt-5.5')
-    })
-
-    it('updateOptions({ body }) leaves a previously-set forwardedProps intact', async () => {
-      const chunks = createTextChunks('Response')
-      const captures: Array<Record<string, any> | undefined> = []
-      const adapter = createMockConnectionAdapter({
-        chunks,
-        onConnect: (_messages, data) => {
-          captures.push(data)
-        },
-      })
-
-      const client = new ChatClient({
-        connection: adapter,
-        body: { provider: 'openai' },
-        forwardedProps: { model: 'gpt-5.5' },
-      })
-
-      client.updateOptions({ body: { provider: 'anthropic' } })
-
-      await client.sendMessage('Hi')
-      expect(captures[0]?.['provider']).toBe('anthropic')
-      expect(captures[0]?.['model']).toBe('gpt-5.5')
-    })
-
-    it('should merge body and forwardedProps with forwardedProps winning', async () => {
-      const chunks = createTextChunks('Response')
-      let capturedData: Record<string, any> | undefined
-      const adapter = createMockConnectionAdapter({
-        chunks,
-        onConnect: (_messages, data) => {
-          capturedData = data
-        },
-      })
-
-      const client = new ChatClient({
-        connection: adapter,
-        // Legacy `body` and new `forwardedProps` declared together —
-        // simulates a mid-migration codebase.
-        body: { model: 'gpt-5.5', temperature: 0.7 },
-        forwardedProps: { model: 'gpt-5.5' },
-      })
-
-      await client.sendMessage('Hello')
-
-      // forwardedProps wins on key collision so partial migrations are sane.
-      expect(capturedData?.['model']).toBe('gpt-5.5')
-      // Non-conflicting keys from `body` are still forwarded.
-      expect(capturedData?.['temperature']).toBe(0.7)
     })
 
     it('should not auto-emit `conversationId` in merged body (replaced by AG-UI threadId)', async () => {
@@ -4099,7 +4027,7 @@ describe('ChatClient', () => {
 
       const client = new ChatClient({
         connection: adapter,
-        body: { model: 'gpt-5.5' },
+        forwardedProps: { model: 'gpt-5.5' },
       })
 
       // First message with per-message body
@@ -4227,21 +4155,6 @@ describe('ChatClient', () => {
       )
     })
 
-    it('should NOT call onCustomEvent for system events like tool-input-available', async () => {
-      const chunks = createToolCallChunks([
-        { id: 'tc-1', name: 'testTool', arguments: '{}' },
-      ])
-      const adapter = createMockConnectionAdapter({ chunks })
-
-      const onCustomEvent = vi.fn()
-      const client = new ChatClient({ connection: adapter, onCustomEvent })
-
-      await client.sendMessage('Test tool call')
-
-      // Should not have been called for tool-input-available system event
-      expect(onCustomEvent).not.toHaveBeenCalled()
-    })
-
     it('should work when onCustomEvent is not provided', async () => {
       const chunks = createCustomEventChunks([
         { name: 'some-event', value: { info: 'test' } },
@@ -4339,126 +4252,6 @@ describe('ChatClient', () => {
       expect(actualData.nested.object.with).toBe('values')
       expect(actualData.array).toEqual([1, 2, 3])
       expect(actualData.null_value).toBeNull()
-    })
-  })
-
-  describe('chained tool approvals', () => {
-    it('should continue after second approval arrives during active continuation stream', async () => {
-      let streamCount = 0
-      let resolveStreamPause: (() => void) | null = null
-
-      const adapter: ConnectionAdapter = {
-        async *connect() {
-          streamCount++
-
-          if (streamCount === 1) {
-            // First stream: tool call A needing approval
-            const chunks = createApprovalToolCallChunks([
-              {
-                id: 'tc-1',
-                name: 'dangerous_tool_1',
-                arguments: '{}',
-                approvalId: 'approval-1',
-              },
-            ])
-            for (const chunk of chunks) yield chunk
-          } else if (streamCount === 2) {
-            // Second stream (after first approval): tool call B needing approval
-            // Yield the tool call and approval request
-            const preChunks: Array<StreamChunk> = [
-              {
-                type: EventType.TOOL_CALL_START,
-                toolCallId: 'tc-2',
-                timestamp: Date.now(),
-                toolCallName: 'dangerous_tool_call_2',
-              },
-              {
-                type: EventType.TOOL_CALL_ARGS,
-                toolCallId: 'tc-2',
-                timestamp: Date.now(),
-                delta: '{}',
-              },
-              {
-                type: EventType.TOOL_CALL_END,
-                toolCallId: 'tc-2',
-                timestamp: Date.now(),
-              },
-              {
-                type: EventType.CUSTOM,
-                timestamp: Date.now(),
-                name: 'approval-requested',
-                value: {
-                  toolCallId: 'tc-2',
-                  toolName: 'dangerous_tool_2',
-                  input: {},
-                  approval: { id: 'approval-2', needsApproval: true },
-                },
-              },
-            ]
-            for (const chunk of preChunks) yield chunk
-
-            // Pause stream so the test can approve tool B while stream is active
-            await new Promise<void>((resolve) => {
-              resolveStreamPause = resolve
-            })
-
-            yield {
-              type: EventType.RUN_FINISHED as const,
-              runId: 'run-2',
-              threadId: 'thread-1',
-              model: 'test',
-              timestamp: Date.now(),
-              metadata: { tanstack: { finishReason: 'tool_calls' } },
-            }
-          } else if (streamCount === 3) {
-            // Third stream (after second approval): final text response
-            const chunks = createTextChunks('All done!')
-            for (const chunk of chunks) yield chunk
-          }
-        },
-      }
-
-      const client = new ChatClient({ connection: adapter })
-
-      // Step 1: Send message. First stream produces tool A with approval.
-      await client.sendMessage('Do something dangerous')
-      expect(streamCount).toBe(1)
-
-      // Step 2: Approve tool A. This triggers checkForContinuation → streamResponse (stream 2).
-      // Don't await - we need to interact during the stream.
-      const approvalPromise = client.addToolApprovalResponse({
-        id: 'approval-1',
-        approved: true,
-      })
-
-      // Wait for second stream to pause (approval-requested chunk already processed)
-      await vi.waitFor(() => {
-        expect(resolveStreamPause).not.toBeNull()
-      })
-
-      // Step 3: Approve tool B while second stream is still active (isLoading=true)
-      expect(client.getIsLoading()).toBe(true)
-      await client.addToolApprovalResponse({
-        id: 'approval-2',
-        approved: true,
-      })
-
-      // Resume the second stream
-      resolveStreamPause!()
-
-      // Wait for the full chain to complete
-      await approvalPromise
-
-      // Step 4: Verify all 3 streams fired (the second approval triggered stream 3)
-      expect(streamCount).toBe(3)
-
-      // Verify final text response is present
-      const messages = client.getMessages()
-      const lastAssistant = [...messages]
-        .reverse()
-        .find((m) => m.role === 'assistant')
-      const textPart = lastAssistant?.parts.find((p) => p.type === 'text')
-      expect(textPart?.content).toBe('All done!')
     })
   })
 

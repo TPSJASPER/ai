@@ -502,7 +502,6 @@ describe('response mapping', () => {
       completionTokens: 3888,
       totalTokens: 3888,
       billed: { quantity: 1, unit: 'images' },
-      unitsBilled: 1,
     })
   })
 
@@ -543,7 +542,6 @@ describe('response mapping', () => {
       { url: 'https://example.com/1.png' },
       { b64Json: 'QUJD' },
     ])
-    expect(result.usage?.unitsBilled).toBe(2)
     expect(result.usage?.billed).toEqual({ quantity: 2, unit: 'images' })
   })
 

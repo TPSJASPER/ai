@@ -4,7 +4,6 @@ import type { ShellToolFactoryConfig } from '@tanstack/openai-base'
 
 export {
   type ShellToolConfig,
-  type ShellTool,
   type ShellToolFactoryConfig,
   convertShellToolToAdapterFormat,
 } from '@tanstack/openai-base'

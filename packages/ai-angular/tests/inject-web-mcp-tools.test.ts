@@ -7,7 +7,6 @@ import {
   injectChat,
   injectPageWebMCPTools,
   injectRegisterWebMCPTools,
-  injectWebMCPTools,
   type InjectRegisterWebMCPToolsOptions,
 } from '../src'
 import { createMockConnectionAdapter } from './test-utils'
@@ -173,12 +172,6 @@ describe('injectRegisterWebMCPTools', () => {
 
   it('throws outside an injection context', () => {
     expect(() => injectRegisterWebMCPTools([statusTool])).toThrow()
-  })
-})
-
-describe('injectWebMCPTools', () => {
-  it('is a deprecated alias of injectRegisterWebMCPTools', () => {
-    expect(injectWebMCPTools).toBe(injectRegisterWebMCPTools)
   })
 })
 

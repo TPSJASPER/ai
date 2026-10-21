@@ -107,20 +107,23 @@ describe('ChatClient runtime context', () => {
   it('clears client-local context when updateOptions receives undefined', async () => {
     type ClientContext = { localUserId: string }
 
-    const toolChunks = createToolCallChunks([
-      {
-        id: 'tc-update-context',
-        name: 'read_optional_context',
-        arguments: '{}',
-      },
-    ])
     const textChunks = createTextChunks('done', 'msg-update-context')
     const outputs: Array<string | null> = []
     let callIndex = 0
 
     const adapter: ConnectConnectionAdapter = {
       async *connect(_messages, _data, abortSignal) {
-        const chunks = callIndex % 2 === 0 ? toolChunks : textChunks
+        // A new call id per turn: an answered call does not run again.
+        const chunks =
+          callIndex % 2 === 0
+            ? createToolCallChunks([
+                {
+                  id: `tc-update-context-${callIndex}`,
+                  name: 'read_optional_context',
+                  arguments: '{}',
+                },
+              ])
+            : textChunks
         callIndex++
         for (const chunk of chunks) {
           if (abortSignal?.aborted) {

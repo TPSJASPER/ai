@@ -745,12 +745,6 @@ describe('OpenAIBaseResponsesTextAdapter', () => {
         ' The answer is clear.',
       ])
 
-      const stepStart = chunks.find((c) => c.type === 'STEP_STARTED')
-      expect(stepStart).toBeDefined()
-      if (stepStart?.type === 'STEP_STARTED') {
-        expect(stepStart.stepType).toBe('thinking')
-      }
-
       const textContent = chunks.filter(
         (c) => c.type === 'TEXT_MESSAGE_CONTENT',
       )
@@ -889,12 +883,6 @@ describe('OpenAIBaseResponsesTextAdapter', () => {
       expect(reasoningContent).toBeDefined()
       if (reasoningContent?.type === 'REASONING_MESSAGE_CONTENT') {
         expect(reasoningContent.delta).toBe('Summary of reasoning...')
-      }
-
-      const stepStart = chunks.find((c) => c.type === 'STEP_STARTED')
-      expect(stepStart).toBeDefined()
-      if (stepStart?.type === 'STEP_STARTED') {
-        expect(stepStart.stepType).toBe('thinking')
       }
     })
   })
@@ -3662,14 +3650,6 @@ describe('OpenAIBaseResponsesTextAdapter', () => {
       expect(
         chunks.filter((chunk) => chunk.type === EventType.REASONING_START),
       ).toHaveLength(1)
-      expect(
-        chunks.filter(
-          (chunk) =>
-            chunk.type === EventType.STEP_STARTED &&
-            chunk.stepType === 'thinking',
-        ),
-      ).toHaveLength(1)
-
       const signedSteps = chunks.filter(
         (chunk) =>
           chunk.type === EventType.REASONING_ENCRYPTED_VALUE &&

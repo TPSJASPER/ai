@@ -22,10 +22,7 @@ type AdapterExtras = {
   output?: unknown
   result?: string | Array<ContentPart>
   state?: ToolOutputState | Record<string, unknown>
-  stepId?: string
-  stepType?: string
   delta?: string | ReadonlyArray<unknown>
-  signature?: string
   error?: { message: string; code?: string }
   'tanstack:interruptErrors'?: ReadonlyArray<InterruptSubmissionError>
   threadId?: string

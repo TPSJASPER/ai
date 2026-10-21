@@ -78,7 +78,6 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          unitsBilled: 1,
           cost: 0.04,
         },
       })),
@@ -287,7 +286,7 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          durationSeconds: 4,
+          billed: { quantity: 4, unit: 'seconds' },
         },
       })),
     }
@@ -299,7 +298,10 @@ describe('generation middleware — wiring', () => {
     })
 
     expect(events.start[0]!.activity).toBe('transcription')
-    expect(events.finish[0]!.info.usage?.durationSeconds).toBe(4)
+    expect(events.finish[0]!.info.usage?.billed).toEqual({
+      quantity: 4,
+      unit: 'seconds',
+    })
   })
 
   it('generateAudio fires start/finish', async () => {
@@ -314,7 +316,7 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          unitsBilled: 1,
+          billed: { quantity: 1, unit: 'units' },
         },
       })),
     }
@@ -326,7 +328,10 @@ describe('generation middleware — wiring', () => {
     })
 
     expect(events.start[0]!.activity).toBe('audio')
-    expect(events.finish[0]!.info.usage?.unitsBilled).toBe(1)
+    expect(events.finish[0]!.info.usage?.billed).toEqual({
+      quantity: 1,
+      unit: 'units',
+    })
   })
 
   // Regression: the submit used to fire onFinish, so persistence stamped a run
@@ -501,7 +506,7 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          unitsBilled: 1,
+          billed: { quantity: 1, unit: 'units' },
         },
       })),
     }
@@ -545,7 +550,10 @@ describe('generation middleware — wiring', () => {
     expect(events.finish[0]!.ctx.runId).toBe(events.start[0]!.runId)
     expect(events.finish[0]!.ctx.runId).toBe('video:openai:job-1')
     expect(events.finish[0]!.ctx.threadId).toBe('video:slot')
-    expect(events.finish[0]!.info.usage?.unitsBilled).toBe(1)
+    expect(events.finish[0]!.info.usage?.billed).toEqual({
+      quantity: 1,
+      unit: 'units',
+    })
     expect(events.usage).toHaveLength(1)
     expect(events.error).toHaveLength(0)
   })
@@ -796,30 +804,6 @@ describe('generation middleware — wiring', () => {
     expect(events.finish).toHaveLength(0)
   })
 
-  it('getVideoJobStatus falls back to getVideoUrl for adapters without getVideo', async () => {
-    const adapter = {
-      kind: 'video' as const,
-      name: 'custom',
-      model: 'custom-video',
-      createVideoJob: vi.fn(),
-      getVideoStatus: vi.fn(async () => ({ status: 'completed' as const })),
-      getVideoUrl: vi.fn(async () => ({
-        jobId: 'job-1',
-        url: 'https://provider.test/v.mp4',
-      })),
-    }
-
-    const status = await getVideoJobStatus({
-      adapter: adapter as any,
-      jobId: 'job-1',
-    })
-
-    expect(status).toMatchObject({
-      status: 'completed',
-      url: 'https://provider.test/v.mp4',
-    })
-  })
-
   it('generateVideo (streaming) inlines an unhosted provider stream as a data URL', async () => {
     const adapter = {
       ...streamAdapter(new Blob(['mp4-bytes']).stream()),
@@ -858,7 +842,7 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          unitsBilled: 1,
+          billed: { quantity: 1, unit: 'units' },
         },
       })),
     }
@@ -876,7 +860,10 @@ describe('generation middleware — wiring', () => {
 
     expect(events.start[0]!.activity).toBe('video')
     expect(events.finish).toHaveLength(1)
-    expect(events.finish[0]!.info.usage?.unitsBilled).toBe(1)
+    expect(events.finish[0]!.info.usage?.billed).toEqual({
+      quantity: 1,
+      unit: 'units',
+    })
     expect(events.error).toHaveLength(0)
   })
 
@@ -1094,7 +1081,7 @@ describe('generation middleware — wiring', () => {
           promptTokens: 0,
           completionTokens: 0,
           totalTokens: 0,
-          unitsBilled: 1,
+          billed: { quantity: 1, unit: 'units' },
         },
       })),
     }
@@ -1113,7 +1100,10 @@ describe('generation middleware — wiring', () => {
 
     expect(events.start).toHaveLength(1)
     expect(events.finish).toHaveLength(1)
-    expect(events.finish[0]!.info.usage?.unitsBilled).toBe(1)
+    expect(events.finish[0]!.info.usage?.billed).toEqual({
+      quantity: 1,
+      unit: 'units',
+    })
     // Abandoning after success must not be reported as a cancellation.
     expect(events.abort).toHaveLength(0)
     expect(events.error).toHaveLength(0)

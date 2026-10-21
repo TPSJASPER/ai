@@ -52,7 +52,7 @@ function SkillsPage() {
 
   const { messages, sendMessage, isLoading } = useChat({
     connection: fetchServerSentEvents('/api/skills-chat'),
-    body,
+    forwardedProps: body,
     devtools: { name: 'Skills' },
   })
 

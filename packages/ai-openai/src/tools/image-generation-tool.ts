@@ -4,7 +4,6 @@ import type { ImageGenerationToolConfig } from '@tanstack/openai-base'
 
 export {
   type ImageGenerationToolConfig,
-  type ImageGenerationTool,
   convertImageGenerationToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

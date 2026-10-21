@@ -27,26 +27,6 @@ function encryptedValueExtras(chunk: AdapterYieldChunk): Array<StreamChunk> {
       ? chunk.timestamp
       : undefined
 
-  if (typeof chunk.signature === 'string' && chunk.signature !== '') {
-    const source = chunkFields(chunk)
-    const toolCallId = stringField(source.toolCallId)
-    const entityId =
-      stringField(chunk.stepId) ??
-      stringField(source.stepName) ??
-      stringField(source.messageId) ??
-      toolCallId
-    if (entityId !== undefined) {
-      extras.push(
-        reasoningEncryptedValue({
-          subtype: toolCallId && !chunk.stepId ? 'tool-call' : 'message',
-          entityId,
-          encryptedValue: chunk.signature,
-          timestamp,
-        }),
-      )
-    }
-  }
-
   if (chunk.type === EventType.TOOL_CALL_START) {
     const thoughtSignature = stringField(
       (chunk.metadata as { thoughtSignature?: unknown } | undefined)

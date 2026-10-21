@@ -1222,82 +1222,6 @@ describe('OpenRouter AG-UI event emission', () => {
       expect(runErr.error?.code).toBeUndefined()
     }
   })
-
-  it('emits STEP_STARTED and STEP_FINISHED for reasoning content', async () => {
-    const streamChunks = [
-      {
-        id: 'chatcmpl-123',
-        model: 'openai/o1-preview',
-        choices: [
-          {
-            delta: {
-              reasoningDetails: [
-                {
-                  type: 'reasoning.text',
-                  text: 'Let me think about this...',
-                },
-              ],
-            },
-            finishReason: null,
-          },
-        ],
-      },
-      {
-        id: 'chatcmpl-123',
-        model: 'openai/o1-preview',
-        choices: [
-          {
-            delta: { content: 'The answer is 42.' },
-            finishReason: null,
-          },
-        ],
-      },
-      {
-        id: 'chatcmpl-123',
-        model: 'openai/o1-preview',
-        choices: [
-          {
-            delta: {},
-            finishReason: 'stop',
-          },
-        ],
-        usage: {
-          promptTokens: 10,
-          completionTokens: 20,
-          totalTokens: 30,
-        },
-      },
-    ]
-
-    setupMockSdkClient(streamChunks)
-    const adapter = createAdapter()
-    const chunks: Array<AdapterYieldChunk> = []
-
-    for await (const chunk of adapter.chatStream({
-      model: 'openai/o1-preview',
-      messages: [{ role: 'user', content: 'What is the meaning of life?' }],
-      logger: testLogger,
-    })) {
-      chunks.push(chunk)
-    }
-
-    // Check for STEP_STARTED event
-    const stepStartedChunk = chunks.find((c) => c.type === 'STEP_STARTED')
-    expect(stepStartedChunk).toBeDefined()
-    if (stepStartedChunk?.type === 'STEP_STARTED') {
-      expect(stepStartedChunk.stepId).toBeDefined()
-      expect(stepStartedChunk.stepType).toBe('thinking')
-    }
-
-    // Check for STEP_FINISHED event — emitted once when reasoning closes
-    const stepFinishedChunks = chunks.filter((c) => c.type === 'STEP_FINISHED')
-    expect(stepFinishedChunks).toHaveLength(1)
-    const stepFinishedChunk = stepFinishedChunks[0]
-    if (stepFinishedChunk?.type === 'STEP_FINISHED') {
-      expect(stepFinishedChunk.stepId).toBeDefined()
-      expect(stepFinishedChunk.content).toBe('Let me think about this...')
-    }
-  })
 })
 
 describe('OpenRouter structured output', () => {
@@ -2453,79 +2377,14 @@ describe('OpenRouter duplicate event prevention', () => {
   })
 })
 
-describe('OpenRouter STEP event consistency', () => {
+describe('OpenRouter reasoning event consistency', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('every STEP_FINISHED has a preceding STEP_STARTED', async () => {
-    const streamChunks = [
-      {
-        id: 'chatcmpl-step',
-        model: 'openai/o1-preview',
-        choices: [
-          {
-            delta: {
-              reasoningDetails: [
-                { type: 'reasoning.text', text: 'Thinking...' },
-              ],
-            },
-            finishReason: null,
-          },
-        ],
-      },
-      {
-        id: 'chatcmpl-step',
-        model: 'openai/o1-preview',
-        choices: [
-          {
-            delta: { content: 'Answer: 42' },
-            finishReason: null,
-          },
-        ],
-      },
-      {
-        id: 'chatcmpl-step',
-        model: 'openai/o1-preview',
-        choices: [{ delta: {}, finishReason: 'stop' }],
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-      },
-    ]
-
-    setupMockSdkClient(streamChunks)
-    const adapter = createAdapter()
-    const chunks: Array<AdapterYieldChunk> = []
-
-    for await (const chunk of adapter.chatStream({
-      model: 'openai/o1-preview',
-      messages: [{ role: 'user', content: 'What is the meaning of life?' }],
-      logger: testLogger,
-    })) {
-      chunks.push(chunk)
-    }
-
-    const eventTypes = chunks.map((c) => c.type)
-    const stepFinishedIndices = eventTypes
-      .map((t, i) => (t === 'STEP_FINISHED' ? i : -1))
-      .filter((i) => i !== -1)
-    const stepStartedIndices = eventTypes
-      .map((t, i) => (t === 'STEP_STARTED' ? i : -1))
-      .filter((i) => i !== -1)
-
-    // Every STEP_FINISHED must have a STEP_STARTED before it
-    expect(stepStartedIndices.length).toBeGreaterThan(0)
-    for (const finIdx of stepFinishedIndices) {
-      const hasMatchingStart = stepStartedIndices.some(
-        (startIdx) => startIdx < finIdx,
-      )
-      expect(hasMatchingStart).toBe(true)
-    }
-  })
-
-  it('emits exactly one STEP_STARTED and one STEP_FINISHED for multi-delta reasoning', async () => {
+  it('emits exactly one REASONING_START and one REASONING_END for multi-delta reasoning', async () => {
     // When multiple reasoning deltas arrive, the adapter should emit a
-    // single STEP_STARTED/STEP_FINISHED pair — not one STEP_FINISHED per
-    // delta.  A 1:N ratio causes verifiers to report orphan STEP_FINISHED.
+    // single REASONING_START/REASONING_END pair — not one pair per delta.
     const streamChunks = [
       {
         id: 'chatcmpl-multi',
@@ -2595,19 +2454,16 @@ describe('OpenRouter STEP event consistency', () => {
       chunks.push(chunk)
     }
 
-    const stepStarted = chunks.filter((c) => c.type === 'STEP_STARTED')
-    const stepFinished = chunks.filter((c) => c.type === 'STEP_FINISHED')
+    const reasoningStart = chunks.filter((c) => c.type === 'REASONING_START')
+    const reasoningEnd = chunks.filter((c) => c.type === 'REASONING_END')
 
-    expect(stepStarted).toHaveLength(1)
-    expect(stepFinished).toHaveLength(1)
+    expect(reasoningStart).toHaveLength(1)
+    expect(reasoningEnd).toHaveLength(1)
   })
 
-  it('emits the spec REASONING_* lifecycle alongside the legacy STEP_* events', async () => {
-    // The base now exposes both the legacy STEP_STARTED/STEP_FINISHED pair
-    // (kept for backwards compatibility with consumers built against the
-    // pre-spec stream) AND the spec REASONING_START / REASONING_MESSAGE_* /
-    // REASONING_END events. Dropping any of the REASONING_* events would
-    // silently break consumers that migrated to the new shape.
+  it('emits the spec REASONING_* lifecycle', async () => {
+    // REASONING_START / REASONING_MESSAGE_* / REASONING_END are the only
+    // reasoning events. Dropping any of them would silently break consumers.
     const streamChunks = [
       {
         id: 'r-1',
@@ -2674,8 +2530,7 @@ describe('OpenRouter STEP event consistency', () => {
     expect(reasoningEnd).toBeGreaterThan(reasoningMessageEnd)
 
     // Joining REASONING_MESSAGE_CONTENT deltas reproduces the full reasoning
-    // text — the migration leaves the new-spec event shape semantically
-    // equivalent to the legacy STEP_FINISHED accumulator without losing data.
+    // text.
     const reasoningDeltas = chunks
       .filter(
         (

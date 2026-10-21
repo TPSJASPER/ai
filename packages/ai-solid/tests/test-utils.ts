@@ -80,7 +80,6 @@ export function renderUseChat(options?: UseChatOptions) {
           clear: hook.clear,
           setMessages: hook.setMessages,
           addToolResult: hook.addToolResult,
-          addToolApprovalResponse: hook.addToolApprovalResponse,
         }
       },
     },

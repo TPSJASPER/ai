@@ -7,9 +7,6 @@ import type { Tool } from '@tanstack/ai'
 
 export type { ComputerUseToolConfig }
 
-/** @deprecated Renamed to `ComputerUseToolConfig`. Will be removed in a future release. */
-export type ComputerUseTool = ComputerUseToolConfig
-
 /**
  * Converts a standard Tool to OpenAI ComputerUseTool format
  */

@@ -547,35 +547,6 @@ describe('createChatOptions() tool type preservation', () => {
 // ===========================
 
 describe('ChatStream tagged custom event narrowing', () => {
-  it('should narrow approval-requested CUSTOM event payload', () => {
-    type Chunk = ChatStreamChunk
-    type Approval = Extract<
-      Chunk,
-      { type: 'CUSTOM'; name: 'approval-requested' }
-    >
-
-    expectTypeOf<Approval['value']>().toEqualTypeOf<{
-      toolCallId: string
-      toolName: string
-      input: unknown
-      approval: { id: string; needsApproval: true }
-    }>()
-  })
-
-  it('should narrow tool-input-available CUSTOM event payload', () => {
-    type Chunk = ChatStreamChunk
-    type ToolInput = Extract<
-      Chunk,
-      { type: 'CUSTOM'; name: 'tool-input-available' }
-    >
-
-    expectTypeOf<ToolInput['value']>().toEqualTypeOf<{
-      toolCallId: string
-      toolName: string
-      input: unknown
-    }>()
-  })
-
   it('should narrow structured-output.start CUSTOM event payload', () => {
     type Chunk = ChatStreamChunk
     type Start = Extract<
@@ -604,18 +575,18 @@ describe('ChatStream tagged custom event narrowing', () => {
     type Chunk = ChatStreamChunk
     type Custom = Extract<Chunk, { type: 'CUSTOM' }>
     expectTypeOf<Custom['name']>().toEqualTypeOf<KnownCustomEvent['name']>()
-    type Approval = Extract<Custom, { name: 'approval-requested' }>
-    expectTypeOf<Approval['value']['toolCallId']>().toEqualTypeOf<string>()
+    type Start = Extract<Custom, { name: 'structured-output.start' }>
+    expectTypeOf<Start['value']['messageId']>().toEqualTypeOf<string>()
   })
 
   it('should not poison `value` to any across the CUSTOM union', () => {
     type Chunk = ChatStreamChunk
-    type Approval = Extract<
+    type Start = Extract<
       Chunk,
-      { type: 'CUSTOM'; name: 'approval-requested' }
+      { type: 'CUSTOM'; name: 'structured-output.start' }
     >
 
-    expectTypeOf<Approval['value']>().not.toBeAny()
+    expectTypeOf<Start['value']>().not.toBeAny()
   })
 })
 

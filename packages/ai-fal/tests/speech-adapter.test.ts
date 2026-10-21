@@ -339,7 +339,6 @@ describe('Fal Speech Adapter', () => {
       completionTokens: 0,
       totalTokens: 0,
       billed: { quantity: 3, unit: 'units' },
-      unitsBilled: 3,
     })
   })
 

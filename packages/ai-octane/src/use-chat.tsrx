@@ -113,7 +113,6 @@ export function useChat<
                 threadId: initialOptions.threadId,
               }),
             }),
-      ...(initialOptions.body !== undefined && { body: initialOptions.body }),
       ...(initialOptions.forwardedProps !== undefined && {
         forwardedProps: initialOptions.forwardedProps,
       }),
@@ -248,10 +247,6 @@ export function useChat<
   // fields and rejects explicit `undefined` under EOPT, so guard the optional
   // slots before passing them.
   useEffect(() => {
-    client.updateOptions({ body: options.body })
-  }, [client, options.body])
-
-  useEffect(() => {
     if (options.forwardedProps !== undefined) {
       client.updateOptions({ forwardedProps: options.forwardedProps })
     }
@@ -367,20 +362,6 @@ export function useChat<
     [client],
   )
 
-  const addToolApprovalResponse = useCallback(
-    async (response: { id: string; approved: boolean }) => {
-      await client.addToolApprovalResponse(response)
-    },
-    [client],
-  )
-
-  const resumeInterrupts = useCallback(
-    async (resumeItems: Array<RunAgentResumeItem>, state?: ChatResumeState) => {
-      return await client.resumeInterrupts(resumeItems, state ?? undefined)
-    },
-    [client],
-  )
-
   const resolveInterrupts = useCallback(
     (
       resolution:
@@ -479,19 +460,16 @@ export function useChat<
     setMessages: setMessagesManually,
     clear,
     addToolResult,
-    addToolApprovalResponse,
     queue: snapshot.queue,
     cancelQueued,
     runId: snapshot.runId,
     interrupts: snapshot.interruptState.interrupts,
-    pendingInterrupts: snapshot.interruptState.pendingInterrupts,
     interruptErrors: snapshot.interruptState.interruptErrors,
     resuming: snapshot.interruptState.resuming,
     resolveInterrupts,
     cancelInterrupts,
     retryInterrupts,
     resumeInterruptsUnsafe,
-    resumeInterrupts,
     partial,
     final,
   } as unknown as UseChatReturn<TTools, TSchema, TInterrupts>

@@ -74,7 +74,7 @@ function JsonTransportPage() {
     connection,
     persistence: true,
     tools,
-    body: { testId, aimockPort, structured },
+    forwardedProps: { testId, aimockPort, structured },
   })
 
   return (

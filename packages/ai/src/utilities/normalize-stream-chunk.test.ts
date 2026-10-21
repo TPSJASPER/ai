@@ -416,39 +416,4 @@ describe('normalizeStreamChunk', () => {
       state: 'output-error',
     })
   })
-
-  it('strips STEP_FINISHED thinking extras and emits REASONING_ENCRYPTED_VALUE for the signature', () => {
-    const out = normalizeAll({
-      type: EventType.STEP_FINISHED,
-      stepName: 'thinking',
-      stepId: 's1',
-      delta: 'hmm',
-      content: 'hmm full',
-      signature: 'sig',
-    } as AdapterYieldChunk)
-
-    expect(out).toHaveLength(2)
-    expect(out[0]).toEqual({
-      type: EventType.STEP_FINISHED,
-      stepName: 'thinking',
-      metadata: {
-        tanstack: {
-          content: 'hmm full',
-          delta: 'hmm',
-          signature: 'sig',
-          stepId: 's1',
-        },
-      },
-    })
-    expect(out[0]).not.toHaveProperty('delta')
-    expect(out[0]).not.toHaveProperty('content')
-    expect(out[0]).not.toHaveProperty('signature')
-    expect(out[0]).not.toHaveProperty('stepId')
-    expect(out[1]).toEqual({
-      type: EventType.REASONING_ENCRYPTED_VALUE,
-      subtype: 'message',
-      entityId: 's1',
-      encryptedValue: 'sig',
-    })
-  })
 })

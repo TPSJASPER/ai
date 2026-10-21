@@ -60,7 +60,7 @@ function SolidReactiveChatPage() {
                 headers: { 'Content-Type': 'text/event-stream' },
               })
             },
-            get body() {
+            get forwardedProps() {
               return { provider: provider() }
             },
           })

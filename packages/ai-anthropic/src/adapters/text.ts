@@ -952,8 +952,7 @@ export class AnthropicTextAdapter<
 
     // Lift skills attached to a `code_execution` tool into the top-level
     // `container.skills` request param (Anthropic's required shape). Preserve any
-    // `container.id` supplied via modelOptions for container reuse. This is the
-    // canonical path for skills; `modelOptions.container.skills` is deprecated.
+    // `container.id` supplied via modelOptions for container reuse.
     const toolSkills = options.tools
       ?.map((tool) =>
         getAnthropicProviderToolKind(tool) === 'code_execution'
@@ -1508,7 +1507,6 @@ export class AnthropicTextAdapter<
       model: options.model,
     }
     let accumulatedContent = ''
-    let accumulatedThinking = ''
     let accumulatedSignature = ''
     const toolCallsMap = new Map<
       number,
@@ -1539,7 +1537,6 @@ export class AnthropicTextAdapter<
     const runId = options.runId ?? genId()
     const threadId = options.threadId ?? genId()
     const messageId = genId()
-    let stepId: string | null = null
     let reasoningMessageId: string | null = null
     let hasClosedReasoning = false
     let hasEmittedRunStarted = false
@@ -1678,11 +1675,9 @@ export class AnthropicTextAdapter<
               hasEmittedTextMessageStart = false
             }
           } else if (event.content_block.type === 'thinking') {
-            accumulatedThinking = ''
             accumulatedSignature = ''
             hasClosedReasoning = false
-            // Emit REASONING and STEP_STARTED for thinking
-            stepId = genId()
+            // Emit REASONING events for thinking
             reasoningMessageId = genId()
 
             // Spec REASONING events
@@ -1699,22 +1694,11 @@ export class AnthropicTextAdapter<
               model,
               timestamp: Date.now(),
             }
-
-            // Legacy STEP events (kept during transition)
-            yield {
-              type: EventType.STEP_STARTED,
-              stepName: stepId,
-              stepId,
-              model,
-              timestamp: Date.now(),
-              stepType: 'thinking',
-            }
           } else if (event.content_block.type === 'redacted_thinking') {
             // Encrypted thinking: no text, and its data must go back to
             // Anthropic unchanged. It gets its own reasoning message, and the
             // encrypted value names that message. The id prefix marks the
-            // data as a redacted block, not a signature. The step reuses the
-            // id so the stream processor sees the prefix too.
+            // data as a redacted block, not a signature.
             const redactedId = `${REDACTED_THINKING_ID_PREFIX}${genId()}`
             yield {
               type: EventType.REASONING_START,
@@ -1728,23 +1712,6 @@ export class AnthropicTextAdapter<
               role: 'reasoning' as const,
               model,
               timestamp: Date.now(),
-            }
-            yield {
-              type: EventType.STEP_STARTED,
-              stepName: redactedId,
-              stepId: redactedId,
-              model,
-              timestamp: Date.now(),
-              stepType: 'thinking',
-            }
-            yield {
-              type: EventType.STEP_FINISHED,
-              stepName: redactedId,
-              stepId: redactedId,
-              model,
-              timestamp: Date.now(),
-              delta: '',
-              content: '',
             }
             yield {
               type: EventType.REASONING_ENCRYPTED_VALUE,
@@ -1813,7 +1780,6 @@ export class AnthropicTextAdapter<
             reasoningMessageId
           ) {
             const delta = event.delta.thinking
-            accumulatedThinking += delta
 
             // Spec REASONING content event
             yield {
@@ -1822,17 +1788,6 @@ export class AnthropicTextAdapter<
               delta,
               model,
               timestamp: Date.now(),
-            }
-
-            // Legacy STEP event
-            yield {
-              type: EventType.STEP_FINISHED,
-              stepName: stepId || genId(),
-              stepId: stepId || genId(),
-              model,
-              timestamp: Date.now(),
-              delta,
-              content: accumulatedThinking,
             }
           } else if (
             (event.delta as { type: string }).type === 'signature_delta'
@@ -1889,18 +1844,9 @@ export class AnthropicTextAdapter<
         } else if (event.type === 'content_block_stop') {
           if (currentBlockType === 'thinking') {
             // Emit signature so it can be replayed in multi-turn context.
-            // It belongs to the reasoning message, not the step, so an AG-UI
-            // client finds that message by `entityId`.
-            if (accumulatedSignature && stepId && reasoningMessageId) {
-              yield {
-                type: EventType.STEP_FINISHED,
-                stepName: stepId,
-                stepId,
-                model,
-                timestamp: Date.now(),
-                delta: '',
-                content: accumulatedThinking,
-              }
+            // It belongs to the reasoning message, so an AG-UI client finds that
+            // message by `entityId`.
+            if (accumulatedSignature && reasoningMessageId) {
               yield {
                 type: EventType.REASONING_ENCRYPTED_VALUE,
                 subtype: 'message' as const,

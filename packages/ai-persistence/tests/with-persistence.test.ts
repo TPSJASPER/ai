@@ -319,7 +319,6 @@ describe('withPersistence (state-only)', () => {
             totalTokens: 12,
             promptTokensDetails: { cachedTokens: 3 },
             billed: { quantity: 2, unit: 'units' },
-            unitsBilled: 2,
             cost: 1,
           },
         },
@@ -340,7 +339,6 @@ describe('withPersistence (state-only)', () => {
           completionTokensDetails: { reasoningTokens: 2 },
           providerUsageDetails: { requestId: 'final' },
           billed: { quantity: 1, unit: 'units' },
-          unitsBilled: 1,
           cost: 2,
         }),
       ],
@@ -365,7 +363,6 @@ describe('withPersistence (state-only)', () => {
       completionTokensDetails: { reasoningTokens: 2 },
       providerUsageDetails: { requestId: 'final' },
       billed: { quantity: 3, unit: 'units' },
-      unitsBilled: 3,
       cost: 3,
     })
   })
@@ -1104,8 +1101,9 @@ describe('withPersistence (state-only)', () => {
           timestamp: 1,
         },
         {
-          type: EventType.STEP_STARTED,
-          stepName: 'think-1',
+          type: EventType.REASONING_MESSAGE_START,
+          messageId: 'reasoning-1',
+          role: 'reasoning',
           timestamp: 1,
         },
         {
@@ -1115,8 +1113,8 @@ describe('withPersistence (state-only)', () => {
           timestamp: 1,
         },
         {
-          type: EventType.STEP_FINISHED,
-          stepName: 'think-1',
+          type: EventType.REASONING_MESSAGE_END,
+          messageId: 'reasoning-1',
           timestamp: 1,
         },
         ev.text('Ada'),

@@ -7,7 +7,7 @@ import {
   RealtimeClient,
   VideoGenerationClient,
 } from '../src'
-import type { RealtimeAdapter, RealtimeConnection } from '../src'
+import type { RealtimeAdapter, RealtimeConnection } from '@tanstack/ai/client'
 
 describe('client UI snapshots', () => {
   it('publishes and clears the active generation run id', async () => {

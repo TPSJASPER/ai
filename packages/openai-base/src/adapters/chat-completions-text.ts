@@ -429,7 +429,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
     let hasEmittedTextMessageStart = false
     let reasoningMessageId: string | undefined
     let hasClosedReasoning = false
-    let stepId: string | undefined
     let lastModel: string | undefined
     let lastResponseId: string | undefined
     let finishReason: string | null = null
@@ -454,18 +453,7 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
           model: lastModel || chatOptions.model,
           timestamp: Date.now(),
         }
-        if (stepId) {
-          yield {
-            type: EventType.STEP_FINISHED,
-            stepName: stepId,
-            stepId,
-            model: lastModel || chatOptions.model,
-            timestamp: Date.now(),
-            content: accumulatedReasoning,
-          }
-        }
         reasoningMessageId = undefined
-        stepId = undefined
         hasClosedReasoning = false
       }
     }.bind(this)
@@ -537,7 +525,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
         if (reasoning && reasoning.text) {
           if (!reasoningMessageId) {
             reasoningMessageId = generateId(this.name)
-            stepId = generateId(this.name)
             yield {
               type: EventType.REASONING_START,
               messageId: reasoningMessageId,
@@ -550,14 +537,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
               role: 'reasoning' as const,
               model: chunk.model || chatOptions.model,
               timestamp: Date.now(),
-            }
-            yield {
-              type: EventType.STEP_STARTED,
-              stepName: stepId,
-              stepId,
-              model: chunk.model || chatOptions.model,
-              timestamp: Date.now(),
-              stepType: 'thinking',
             }
           }
           accumulatedReasoning += reasoning.text
@@ -935,11 +914,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
     // so these stay unused for openai/grok/groq. OpenRouter etc. opt in.
     let reasoningMessageId: string | undefined
     let hasClosedReasoning = false
-    // Legacy STEP_STARTED/STEP_FINISHED pair emitted alongside REASONING_*
-    // for back-compat with consumers (UI, devtools) that haven't migrated
-    // to the spec REASONING_* events yet.
-    let stepId: string | undefined
-    let accumulatedReasoning = ''
     // Track whether ANY tool call lifecycle was actually completed across the
     // entire stream. Lets us downgrade a `tool_calls` finish_reason to `stop`
     // when the upstream signalled tool calls but never produced a complete
@@ -994,7 +968,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
         if (reasoning && reasoning.text) {
           if (!reasoningMessageId) {
             reasoningMessageId = generateId(this.name)
-            stepId = generateId(this.name)
             yield {
               type: EventType.REASONING_START,
               messageId: reasoningMessageId,
@@ -1008,18 +981,7 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
               model: chunk.model || options.model,
               timestamp: Date.now(),
             }
-            // Legacy STEP_STARTED (single emission, paired with the
-            // STEP_FINISHED below when reasoning closes).
-            yield {
-              type: EventType.STEP_STARTED,
-              stepName: stepId,
-              stepId,
-              model: chunk.model || options.model,
-              timestamp: Date.now(),
-              stepType: 'thinking',
-            }
           }
-          accumulatedReasoning += reasoning.text
           yield {
             type: EventType.REASONING_MESSAGE_CONTENT,
             messageId: reasoningMessageId,
@@ -1062,16 +1024,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
               messageId: reasoningMessageId,
               model: chunk.model || options.model,
               timestamp: Date.now(),
-            }
-            if (stepId) {
-              yield {
-                type: EventType.STEP_FINISHED,
-                stepName: stepId,
-                stepId,
-                model: chunk.model || options.model,
-                timestamp: Date.now(),
-                content: accumulatedReasoning,
-              }
             }
           }
 
@@ -1316,16 +1268,6 @@ export abstract class OpenAIBaseChatCompletionsTextAdapter<
             messageId: reasoningMessageId,
             model: lastModel || options.model,
             timestamp: Date.now(),
-          }
-          if (stepId) {
-            yield {
-              type: EventType.STEP_FINISHED,
-              stepName: stepId,
-              stepId,
-              model: lastModel || options.model,
-              timestamp: Date.now(),
-              content: accumulatedReasoning,
-            }
           }
         }
 

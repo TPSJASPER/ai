@@ -61,13 +61,15 @@ function providerToolStart(toolCallId: string, query: string) {
 }
 
 function reasoning(stepName: string, content: string, signature: string) {
+  const messageId = `${stepName}-reasoning`
   return [
-    ev.stepStarted(stepName),
-    chunk(EventType.REASONING_MESSAGE_CONTENT, {
-      messageId: `${stepName}-reasoning`,
-      delta: content,
+    chunk(EventType.REASONING_MESSAGE_START, { messageId, role: 'reasoning' }),
+    chunk(EventType.REASONING_MESSAGE_CONTENT, { messageId, delta: content }),
+    chunk(EventType.REASONING_ENCRYPTED_VALUE, {
+      subtype: 'message',
+      entityId: messageId,
+      encryptedValue: signature,
     }),
-    { ...ev.stepFinished('', stepName), signature },
   ]
 }
 

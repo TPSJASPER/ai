@@ -2,7 +2,6 @@ import {
   EventType,
   getChunkRunId as getNormalizedChunkRunId,
   restoreInboundChunk,
-  tanstackMetadata,
   uiMessagesToWire,
   withTanstackMetadata,
 } from '@tanstack/ai/client'
@@ -335,8 +334,7 @@ async function* readStreamLines(
 
       for (const line of lines) {
         // Strip a trailing CR so a CRLF stream matches the LF path (and the
-        // XHR reader). Without this an exact-equality check like the `[DONE]`
-        // sentinel in linesToSSEEvents would miss `data: [DONE]\r`.
+        // XHR reader).
         const normalized = line.endsWith('\r') ? line.slice(0, -1) : line
         if (normalized.trim()) {
           yield normalized
@@ -433,17 +431,6 @@ function restoreInboundUsage(chunk: StreamChunk): StreamChunk {
   return restoreInboundChunk(chunk)
 }
 
-function sseChunkModel(chunk: StreamChunk): string | undefined {
-  const tanstackModel = tanstackMetadata(chunk)?.model
-  if (typeof tanstackModel === 'string') return tanstackModel
-  const usage = 'usage' in chunk ? chunk.usage : undefined
-  if (Array.isArray(usage)) {
-    const model = (usage[0] as { model?: unknown } | undefined)?.model
-    if (typeof model === 'string') return model
-  }
-  return undefined
-}
-
 /**
  * Parse SSE-format lines into stream events, pairing each chunk with the `id:`
  * offset of the event it arrived on. Shared by the fetch- and XHR-backed SSE
@@ -451,20 +438,13 @@ function sseChunkModel(chunk: StreamChunk): string | undefined {
  *
  * Accepts either `data: {...}` lines or bare JSON lines. Skips comments
  * starting with `:` (proxies and CDNs inject these as keepalives) and the
- * `event:` / `retry:` SSE control fields. A `[DONE]` sentinel is treated as a
- * terminal event: a synthesized RUN_FINISHED is yielded using the most recent
- * upstream `threadId` / `runId` (falling back to `fallbackIds`), so the
- * consumer sees a clean terminal event with real correlation ids.
+ * `event:` / `retry:` SSE control fields.
  *
  * A JSON parse failure throws — the consumer surfaces it as an error.
  */
 async function* linesToSSEEvents(
   lines: AsyncIterable<string>,
-  fallbackIds?: { threadId?: string; runId?: string },
 ): AsyncGenerator<StreamEvent> {
-  let lastThreadId: string | undefined
-  let lastRunId: string | undefined
-  let lastModel: string | undefined
   let pendingId: string | undefined
   for await (const line of lines) {
     if (line === 'id' || line.startsWith('id:')) {
@@ -489,32 +469,7 @@ async function* linesToSSEEvents(
       continue
     }
     const data = parseSseDataLine(line)
-    if (data === '[DONE]') {
-      yield {
-        chunk: withTanstackMetadata(
-          {
-            type: EventType.RUN_FINISHED,
-            threadId: lastThreadId ?? fallbackIds?.threadId ?? '',
-            runId: lastRunId ?? fallbackIds?.runId ?? '',
-            timestamp: Date.now(),
-          },
-          {
-            finishReason: 'stop',
-            ...(lastModel !== undefined ? { model: lastModel } : {}),
-          },
-        ) as StreamChunk,
-      }
-      return
-    }
     const chunk = restoreInboundUsage(JSON.parse(data) as StreamChunk)
-    if ('threadId' in chunk && typeof chunk.threadId === 'string') {
-      lastThreadId = chunk.threadId
-    }
-    if ('runId' in chunk && typeof chunk.runId === 'string') {
-      lastRunId = chunk.runId
-    }
-    const model = sseChunkModel(chunk)
-    if (model !== undefined) lastModel = model
     const id = pendingId
     pendingId = undefined
     yield { chunk, ...(id !== undefined ? { id } : {}) }
@@ -716,11 +671,10 @@ async function fetchGenerationHydration(
 async function* responseToSSEEvents(
   response: Response,
   abortSignal?: AbortSignal,
-  fallbackIds?: { threadId?: string; runId?: string },
 ): AsyncGenerator<StreamEvent> {
   await assertResponseOk(response)
   const reader = getResponseStreamReader(response)
-  yield* linesToSSEEvents(readStreamLines(reader, abortSignal), fallbackIds)
+  yield* linesToSSEEvents(readStreamLines(reader, abortSignal))
 }
 
 /** Yield NDJSON stream events (chunk + offset) from a fetch Response body. */
@@ -1147,7 +1101,7 @@ export function normalizeConnectionAdapter(
     )
   }
 
-  // Legacy connect() wrapper
+  // connect() wrapper
   let activeBuffer: Array<StreamChunk> = []
   let activeWaiters: Array<(chunk: StreamChunk | null) => void> = []
   let activeSubscriber: typeof activeWaiters | undefined
@@ -1384,8 +1338,6 @@ function buildRunAgentInputBody(
     tools: runContext?.clientTools ?? [],
     context: [],
     forwardedProps,
-    // Backward-compat mirror of `forwardedProps` under the legacy field name.
-    data: { ...forwardedProps },
   }
 }
 
@@ -1481,18 +1433,7 @@ export function fetchServerSentEvents(
             body: JSON.stringify(requestBody),
             credentials: resolvedOptions.credentials || 'same-origin',
           },
-          // Thread the run's ids so a `[DONE]`-terminating server that doesn't
-          // stamp them onto events still yields a correlated terminal (parity
-          // with the XHR adapter's xhrSSEParser).
-          (response, sseSignal) =>
-            responseToSSEEvents(response, sseSignal, {
-              ...(runContext?.threadId !== undefined
-                ? { threadId: runContext.threadId }
-                : {}),
-              ...(runContext?.runId !== undefined
-                ? { runId: runContext.runId }
-                : {}),
-            }),
+          responseToSSEEvents,
         ),
         signal,
         resolvedOptions.reconnect,
@@ -1526,9 +1467,7 @@ export function fetchServerSentEvents(
             headers: requestHeaders,
             credentials: resolvedOptions.credentials || 'same-origin',
           },
-          // A `[DONE]` during a join correlates to the joined run id.
-          (response, sseSignal) =>
-            responseToSSEEvents(response, sseSignal, { runId }),
+          responseToSSEEvents,
         ),
         signal,
         resolvedOptions.reconnect,
@@ -2210,17 +2149,6 @@ function xhrEventSource(
   }
 }
 
-/** SSE line parser bound to the run's ids for a `[DONE]` fallback. */
-function xhrSSEParser(runContext: RunAgentInputContext | undefined) {
-  const fallbackIds: { threadId?: string; runId?: string } = {
-    ...(runContext?.threadId !== undefined
-      ? { threadId: runContext.threadId }
-      : {}),
-    ...(runContext?.runId !== undefined ? { runId: runContext.runId } : {}),
-  }
-  return (lines: AsyncIterable<string>) => linesToSSEEvents(lines, fallbackIds)
-}
-
 /**
  * Create an XMLHttpRequest-backed Server-Sent Events connection adapter.
  *
@@ -2250,7 +2178,7 @@ export function xhrServerSentEvents(
           messages,
           data,
           runContext,
-          xhrSSEParser(runContext),
+          linesToSSEEvents,
         ),
         signal,
         resolvedOptions.reconnect,
@@ -2269,9 +2197,7 @@ export function xhrServerSentEvents(
           [],
           undefined,
           undefined,
-          // A `[DONE]` during a join correlates to the joined run id (parity
-          // with fetchServerSentEvents.joinRun).
-          (lines) => linesToSSEEvents(lines, { runId }),
+          linesToSSEEvents,
         ),
         signal,
         resolvedOptions.reconnect,

@@ -5714,7 +5714,12 @@ describe('chat()', () => {
           iterations: [
             [
               ev.runStarted(),
-              ev.stepStarted('step-signed'),
+              {
+                type: EventType.REASONING_MESSAGE_START,
+                messageId: 'step-signed',
+                role: 'reasoning',
+                timestamp: Date.now(),
+              },
               {
                 type: EventType.REASONING_MESSAGE_CONTENT,
                 messageId: 'step-signed',
@@ -5728,7 +5733,12 @@ describe('chat()', () => {
                 encryptedValue: 'sig-1',
                 timestamp: Date.now(),
               },
-              ev.stepStarted('redacted_thinking-1'),
+              {
+                type: EventType.REASONING_MESSAGE_START,
+                messageId: 'redacted_thinking-1',
+                role: 'reasoning',
+                timestamp: Date.now(),
+              },
               {
                 type: EventType.REASONING_ENCRYPTED_VALUE,
                 subtype: 'message',

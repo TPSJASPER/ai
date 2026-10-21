@@ -4,7 +4,6 @@ import type { ComputerUseToolConfig } from '@tanstack/openai-base'
 
 export {
   type ComputerUseToolConfig,
-  type ComputerUseTool,
   convertComputerUseToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

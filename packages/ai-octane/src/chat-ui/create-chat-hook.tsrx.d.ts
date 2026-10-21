@@ -13,7 +13,6 @@ export declare function createChatHook<
     threadId?: string
     live?: boolean
     forwardedProps?: Record<string, any>
-    body?: Record<string, any>
     initialMessages?: ChatUIHost<TOptions>['messages']
   }) => ChatUIHost<TOptions> & { AppChat: ComponentBody }
   useChatContext: () => ChatUIHost<TOptions>

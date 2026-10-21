@@ -333,7 +333,7 @@ function BankingDemoPage() {
 
   const { messages, sendMessage, isLoading } = useChat({
     connection: fetchServerSentEvents('/api/banking-demo'),
-    body,
+    forwardedProps: body,
     onCustomEvent: handleCustomEvent,
   })
 

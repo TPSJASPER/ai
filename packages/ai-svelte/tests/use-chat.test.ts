@@ -27,7 +27,6 @@ describe('createChat', () => {
       })
 
       expect(Object.isFrozen(chat.interrupts)).toBe(true)
-      expect(chat.pendingInterrupts).toBe(chat.interrupts)
       expect(chat.interrupts[0]).toMatchObject({
         id: 'staged-interrupt',
         status: 'pending',
@@ -176,7 +175,7 @@ describe('createChat', () => {
       },
     ]
     const persistence = {
-      getItem: vi.fn(() => persistedMessages),
+      getItem: vi.fn(() => ({ messages: persistedMessages })),
       setItem: vi.fn(),
       removeItem: vi.fn(),
     }
@@ -202,7 +201,7 @@ describe('createChat', () => {
       },
     ]
     const persistence = {
-      getItem: vi.fn(() => []),
+      getItem: vi.fn(() => ({ messages: [] })),
       setItem: vi.fn(),
       removeItem: vi.fn(),
     }
@@ -239,7 +238,7 @@ describe('createChat', () => {
 
     const chat = createChat({
       connection: mockConnection,
-      body: { provider: 'openai' },
+      forwardedProps: { provider: 'openai' },
     })
 
     await chat.sendMessage('Test', {
@@ -302,16 +301,6 @@ describe('createChat', () => {
     })
 
     expect(typeof chat.addToolResult).toBe('function')
-  })
-
-  it('should have addToolApprovalResponse method', () => {
-    const mockConnection = createMockConnectionAdapter({ chunks: [] })
-
-    const chat = createChat({
-      connection: mockConnection,
-    })
-
-    expect(typeof chat.addToolApprovalResponse).toBe('function')
   })
 
   it('should expose reactive messages property', () => {

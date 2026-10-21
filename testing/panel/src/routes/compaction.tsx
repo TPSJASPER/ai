@@ -66,7 +66,7 @@ function CompactionPage() {
 
   const { messages, sendMessage, isLoading } = useChat({
     connection: fetchServerSentEvents('/api/compaction-chat'),
-    body,
+    forwardedProps: body,
     devtools: { name: 'Compaction' },
   })
 

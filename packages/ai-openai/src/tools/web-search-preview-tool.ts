@@ -4,7 +4,6 @@ import type { WebSearchPreviewToolConfig } from '@tanstack/openai-base'
 
 export {
   type WebSearchPreviewToolConfig,
-  type WebSearchPreviewTool,
   convertWebSearchPreviewToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

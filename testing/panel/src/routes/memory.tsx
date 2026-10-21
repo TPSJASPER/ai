@@ -83,7 +83,7 @@ function MemoryPage() {
 
   const { messages, sendMessage, isLoading } = useChat({
     connection: fetchServerSentEvents('/api/memory-chat'),
-    body,
+    forwardedProps: body,
     devtools: { name: 'Memory' },
   })
 

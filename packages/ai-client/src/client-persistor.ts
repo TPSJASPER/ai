@@ -7,11 +7,10 @@ import type {
   UIMessage,
 } from './types'
 
-/** Normalize a raw `getItem` result (legacy bare array or combined record). */
+/** Validate a raw `getItem` result. */
 function normalizePersistedState(
-  raw: ChatPersistedState | Array<UIMessage> | null | undefined,
+  raw: ChatPersistedState | null | undefined,
 ): ChatPersistedState | undefined {
-  if (Array.isArray(raw)) return { messages: raw }
   if (raw && Array.isArray(raw.messages)) return raw
   return undefined
 }

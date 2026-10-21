@@ -35,7 +35,7 @@ function VideoUnderstanding() {
 
   const { messages, sendMessage, isLoading } = useChat({
     connection: fetchServerSentEvents('/api/video-understanding'),
-    body,
+    forwardedProps: body,
   })
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

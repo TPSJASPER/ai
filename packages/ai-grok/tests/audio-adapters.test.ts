@@ -307,7 +307,6 @@ describe('GrokTranscriptionAdapter', () => {
       completionTokens: 0,
       totalTokens: 0,
       billed: { quantity: 1.23, unit: 'seconds' },
-      durationSeconds: 1.23,
     })
     // Grok returns `confidence` per word when the model provides one; we
     // surface it under `GrokTranscriptionWord` so callers that know they're

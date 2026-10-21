@@ -22,7 +22,6 @@ type ChatInstanceOverrides<TOptions> = {
   threadId?: string
   live?: HeadlessOptions<TOptions>['live']
   forwardedProps?: HeadlessOptions<TOptions>['forwardedProps']
-  body?: HeadlessOptions<TOptions>['body']
   initialMessages?: HeadlessOptions<TOptions>['initialMessages']
 }
 

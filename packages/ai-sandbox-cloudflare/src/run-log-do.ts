@@ -13,14 +13,6 @@
  * - `evt:<runId>:<seq8>` → the chunk for that seq (seq zero-padded to 8 digits
  *                          so `list({ prefix })` returns events in seq order).
  *
- * LIVE-DATA MIGRATION: `rec:` values written before the run vocabulary
- * converged on core's (see the module header in `./run-log`) are converted by
- * {@link migrateStoredRunRecord} on first read and written back immediately, so
- * each record pays the conversion exactly once and every read path — `get`,
- * `append`'s precondition check, the watchdog's {@link list} — observes only
- * the converged layout. Event values (`evt:`) are raw chunks and need no
- * migration.
- *
  * The live-tail wake-up (the in-memory waiter set) is per-INSTANCE; if the
  * instance is evicted mid-run, a reader re-reads the persisted backlog and the
  * `TAIL_POLL_MS` fallback poll keeps it progressing. No event is ever lost.
@@ -28,7 +20,6 @@
  * NOTE: Workers-runtime code — compiles against `@cloudflare/workers-types`.
  */
 import { isTerminalRunStatus } from '@tanstack/ai'
-import { migrateStoredRunRecord } from './run-log'
 import type {
   RunEvent,
   RunEventLog,
@@ -41,13 +32,6 @@ import type { RunError, StreamChunk, TerminalRunStatus } from '@tanstack/ai'
 /** How long a post-eviction reader waits before re-polling storage (ms). */
 const TAIL_POLL_MS = 250
 
-/**
- * What a `rec:` key may hold: the converged layout, or the pre-convergence one
- * `migrateStoredRunRecord` still reads. Typed as the migration function's input
- * so a read is forced through it.
- */
-type StoredRunRecord = Parameters<typeof migrateStoredRunRecord>[0]
-
 const recKey = (runId: string): string => `rec:${runId}`
 const evtKey = (runId: string, seq: number): string =>
   `evt:${runId}:${String(seq).padStart(8, '0')}`
@@ -59,17 +43,9 @@ export class DurableObjectRunEventLog implements RunEventLog {
 
   constructor(private readonly storage: DurableObjectStorage) {}
 
-  /**
-   * Read (and, when needed, migrate + write back) the record under `rec:<runId>`.
-   * The single storage read path — everything else goes through here so no
-   * caller can observe the legacy layout.
-   */
+  /** Read the record under `rec:<runId>`. */
   private async getRecord(runId: string): Promise<RunLogRecord | null> {
-    const stored = await this.storage.get<StoredRunRecord>(recKey(runId))
-    if (!stored) return null
-    const { record, migrated } = migrateStoredRunRecord(stored)
-    if (migrated) await this.storage.put(recKey(runId), record)
-    return record
+    return (await this.storage.get<RunLogRecord>(recKey(runId))) ?? null
   }
 
   private async require(runId: string): Promise<RunLogRecord> {
@@ -151,13 +127,8 @@ export class DurableObjectRunEventLog implements RunEventLog {
 
   async touch(runId: string): Promise<void> {
     await this.storage.transaction(async (txn) => {
-      const stored = await txn.get<StoredRunRecord>(recKey(runId))
-      if (!stored) return
-      const { record, migrated } = migrateStoredRunRecord(stored)
-      if (isTerminalRunStatus(record.status)) {
-        if (migrated) await txn.put(recKey(runId), record)
-        return
-      }
+      const record = await txn.get<RunLogRecord>(recKey(runId))
+      if (!record || isTerminalRunStatus(record.status)) return
       await txn.put(recKey(runId), { ...record, updatedAt: Date.now() })
     })
     // Activity without a new event or status transition gives a tailing reader
@@ -170,13 +141,13 @@ export class DurableObjectRunEventLog implements RunEventLog {
     chunk: Extract<StreamChunk, { type: 'RUN_ERROR' }>,
   ): Promise<boolean> {
     const finished = await this.storage.transaction(async (txn) => {
-      const stored = await txn.get<StoredRunRecord>(recKey(runId))
-      if (!stored) return false
-      const { record, migrated } = migrateStoredRunRecord(stored)
-      if (isTerminalRunStatus(record.status) || record.updatedAt >= cutoff) {
-        if (migrated) await txn.put(recKey(runId), record)
+      const record = await txn.get<RunLogRecord>(recKey(runId))
+      if (
+        !record ||
+        isTerminalRunStatus(record.status) ||
+        record.updatedAt >= cutoff
+      )
         return false
-      }
 
       const now = Date.now()
       const seq = record.lastSeq + 1
@@ -204,13 +175,8 @@ export class DurableObjectRunEventLog implements RunEventLog {
 
   async update(runId: string, patch: RunRecordPatch): Promise<void> {
     const updated = await this.storage.transaction(async (txn) => {
-      const stored = await txn.get<StoredRunRecord>(recKey(runId))
-      if (!stored) return false
-      const { record, migrated } = migrateStoredRunRecord(stored)
-      if (isTerminalRunStatus(record.status)) {
-        if (migrated) await txn.put(recKey(runId), record)
-        return false
-      }
+      const record = await txn.get<RunLogRecord>(recKey(runId))
+      if (!record || isTerminalRunStatus(record.status)) return false
       await txn.put(recKey(runId), {
         ...record,
         ...patch,
@@ -229,19 +195,13 @@ export class DurableObjectRunEventLog implements RunEventLog {
   }
 
   /**
-   * Every run record this log holds, migrated. The coordinator's stall
-   * watchdog iterates this instead of listing `rec:` keys itself, so the
-   * storage layout (and its migration) stays this module's private concern.
+   * Every run record this log holds. The coordinator's stall watchdog
+   * iterates this instead of listing `rec:` keys itself, so the storage layout
+   * stays this module's private concern.
    */
   async list(): Promise<Array<RunLogRecord>> {
-    const stored = await this.storage.list<StoredRunRecord>({ prefix: 'rec:' })
-    const records: Array<RunLogRecord> = []
-    for (const [key, value] of stored) {
-      const { record, migrated } = migrateStoredRunRecord(value)
-      if (migrated) await this.storage.put(key, record)
-      records.push(record)
-    }
-    return records
+    const stored = await this.storage.list<RunLogRecord>({ prefix: 'rec:' })
+    return [...stored.values()]
   }
 
   async *read(

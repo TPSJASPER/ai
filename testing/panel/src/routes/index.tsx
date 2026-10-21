@@ -11,6 +11,7 @@ import { clientTools } from '@tanstack/ai-client'
 import { ThinkingPart } from '@tanstack/ai-react/ui'
 
 import type { UIMessage } from '@tanstack/ai-react'
+import type { BoundInterrupts } from '@tanstack/ai-client'
 
 import type { ModelOption } from '@/lib/model-selection'
 
@@ -71,16 +72,13 @@ function ChatInputArea({ children }: { children: React.ReactNode }) {
 
 function Messages({
   messages,
-  addToolApprovalResponse,
+  interrupts,
   playingId,
   onSpeak,
   onStopSpeaking,
 }: {
   messages: ReadonlyArray<UIMessage>
-  addToolApprovalResponse: (response: {
-    id: string
-    approved: boolean
-  }) => Promise<void>
+  interrupts: BoundInterrupts<typeof tools>
   playingId: string | null
   onSpeak: (text: string, id: string) => void
   onStopSpeaking: () => void
@@ -174,11 +172,18 @@ function Messages({
                     )
                   }
 
-                  // Approval UI
+                  // Approval UI: resolve the bound interrupt for this tool call.
+                  const approval =
+                    part.type === 'tool-call'
+                      ? interrupts.find(
+                          (interrupt) =>
+                            interrupt.kind === 'tool-approval' &&
+                            interrupt.id === part.approval?.id,
+                        )
+                      : undefined
                   if (
                     part.type === 'tool-call' &&
-                    part.state === 'approval-requested' &&
-                    part.approval
+                    approval?.kind === 'tool-approval'
                   ) {
                     return (
                       <div
@@ -199,23 +204,13 @@ function Messages({
                         </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={() =>
-                              addToolApprovalResponse({
-                                id: part.approval!.id,
-                                approved: true,
-                              })
-                            }
+                            onClick={() => approval.resolveInterrupt(true)}
                             className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
                           >
                             ✓ Approve
                           </button>
                           <button
-                            onClick={() =>
-                              addToolApprovalResponse({
-                                id: part.approval!.id,
-                                approved: false,
-                              })
-                            }
+                            onClick={() => approval.resolveInterrupt(false)}
                             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
                           >
                             ✗ Deny
@@ -449,15 +444,14 @@ function ChatPage() {
     [selectedModel.provider, selectedModel.model, traceId],
   )
 
-  const { messages, sendMessage, isLoading, addToolApprovalResponse, stop } =
-    useChat({
-      connection: fetchServerSentEvents('/api/chat'),
-      tools,
-      onChunk: (chunk: any) => {
-        setChunks((prev) => [...prev, chunk])
-      },
-      body,
-    })
+  const { messages, sendMessage, isLoading, interrupts, stop } = useChat({
+    connection: fetchServerSentEvents('/api/chat'),
+    tools,
+    onChunk: (chunk: any) => {
+      setChunks((prev) => [...prev, chunk])
+    },
+    forwardedProps: body,
+  })
   const [input, setInput] = useState('')
 
   const clearChunks = () => setChunks([])
@@ -518,7 +512,7 @@ function ChatPage() {
 
         <Messages
           messages={messages}
-          addToolApprovalResponse={addToolApprovalResponse}
+          interrupts={interrupts}
           playingId={playingId}
           onSpeak={speak}
           onStopSpeaking={stopSpeaking}

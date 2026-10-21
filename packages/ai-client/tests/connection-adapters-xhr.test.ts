@@ -110,7 +110,6 @@ describe('xhr connection adapters', () => {
         threadId: 'thread-1',
         runId: 'run-1',
         forwardedProps: { model: 'test-model', temperature: 0 },
-        data: { model: 'test-model', temperature: 0 },
       })
 
       xhr.progress('data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"msg')
@@ -166,70 +165,13 @@ describe('xhr connection adapters', () => {
         },
       ])
 
-      xhr.progress('data: [DONE]\n\n')
-      await expect(nextChunk).resolves.toMatchObject({
-        done: false,
-        value: { type: EventType.RUN_FINISHED },
-      })
-    })
-
-    it('synthesizes RUN_FINISHED for [DONE] and ignores later bytes', async () => {
-      const { xhr, xhrFactory } = createFakeXhrFactory()
-      const adapter = xhrServerSentEvents('/api/chat', { xhrFactory })
-      const iterator = adapter
-        .connect([], undefined, undefined, {
-          threadId: 'thread-1',
-          runId: 'run-1',
-        })
-        [Symbol.asyncIterator]()
-      const nextChunk = iterator.next()
-      await nextTick()
-
-      xhr.progress('data: [DONE]\n\n')
       xhr.progress(
-        'data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"late","timestamp":1,"delta":"late","content":"late"}\n\n',
+        'data: {"type":"RUN_FINISHED","threadId":"thread-1","runId":"run-1"}\n\n',
       )
-
-      await expect(nextChunk).resolves.toMatchObject({
-        done: false,
-        value: {
-          type: EventType.RUN_FINISHED,
-          threadId: 'thread-1',
-          runId: 'run-1',
-          metadata: { tanstack: { finishReason: 'stop' } },
-        },
-      })
-      await expect(iterator.next()).resolves.toEqual({
-        done: true,
-        value: undefined,
-      })
-    })
-
-    it('aborts the XHR after [DONE] so late bytes stop downloading', async () => {
-      const { xhr, xhrFactory } = createFakeXhrFactory()
-      const adapter = xhrServerSentEvents('/api/chat', { xhrFactory })
-      const iterator = adapter
-        .connect([], undefined, undefined, {
-          threadId: 'thread-1',
-          runId: 'run-1',
-        })
-        [Symbol.asyncIterator]()
-      const nextChunk = iterator.next()
-      await nextTick()
-
-      xhr.progress('data: [DONE]\n\n')
-
       await expect(nextChunk).resolves.toMatchObject({
         done: false,
         value: { type: EventType.RUN_FINISHED },
       })
-      // Completing iteration tears the socket down so late bytes stop
-      // downloading (the terminal event's yield pauses before cleanup).
-      await expect(iterator.next()).resolves.toEqual({
-        done: true,
-        value: undefined,
-      })
-      expect(xhr.abort).toHaveBeenCalledTimes(1)
     })
 
     it('parses SSE data frames without a space after the colon', async () => {
@@ -363,8 +305,11 @@ describe('xhr connection adapters', () => {
         [Symbol.asyncIterator]()
       const successNext = successIterator.next()
       await nextTick()
-      success.xhr.progress('data: [DONE]\n\n')
+      success.xhr.progress(
+        'data: {"type":"RUN_FINISHED","threadId":"thread-1","runId":"run-1"}\n\n',
+      )
       await successNext
+      success.xhr.load()
       await successIterator.next()
 
       expect(successRemoveEventListener).toHaveBeenCalledWith(

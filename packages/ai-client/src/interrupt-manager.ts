@@ -152,7 +152,6 @@ const itemErrorCodes = new Set<ItemInterruptError['code']>([
   'expired',
   'stale',
   'conflict',
-  'legacy-unsupported',
 ])
 
 const batchErrorCodes = new Set<BatchInterruptError['code']>([
@@ -169,42 +168,10 @@ const batchErrorCodes = new Set<BatchInterruptError['code']>([
   'expired',
   'stale',
   'conflict',
-  'legacy-submit-failed',
 ])
 
 function isUnknownObject(value: unknown): value is UnknownObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isLegacyApprovalMetadata(value: unknown): boolean {
-  return (
-    isUnknownObject(value) &&
-    value['kind'] === 'approval' &&
-    typeof value['toolName'] === 'string' &&
-    'input' in value
-  )
-}
-
-function isLegacyClientToolMetadata(value: unknown): boolean {
-  return (
-    isUnknownObject(value) &&
-    value['kind'] === 'client_tool' &&
-    typeof value['toolName'] === 'string' &&
-    'input' in value
-  )
-}
-
-/**
- * Does this descriptor carry the pre-binding TanStack metadata marker?
- *
- * Descriptors emitted before the resume binding existed are still ours to
- * resume, so they must not be mistaken for another producer's interrupt.
- */
-function isLegacyInterruptMetadata(interrupt: Interrupt): boolean {
-  return (
-    isLegacyApprovalMetadata(interrupt.metadata) ||
-    isLegacyClientToolMetadata(interrupt.metadata)
-  )
 }
 
 function getDescriptorBinding(
@@ -248,17 +215,6 @@ function hasFirstPartyGenericMarker(interrupt: Interrupt): boolean {
 
 function getInterruptPayload(interrupt: Interrupt): unknown {
   return interrupt.metadata?.['tanstack:interruptPayload']
-}
-
-/**
- * Only used to route *legacy* (pre-binding) descriptors, which have no binding
- * to classify off. Current descriptors are classified by their binding alone.
- */
-function isClientToolExecutionReason(reason: string): boolean {
-  return (
-    reason === 'tanstack:client_tool_execution' ||
-    reason === 'client_tool_input'
-  )
 }
 
 function responseSchemaHash(interrupt: Interrupt): string | undefined {
@@ -472,7 +428,6 @@ function baseSnapshot(
     item.error === undefined
       ? Object.freeze([])
       : Object.freeze([cloneAndDeepFreezeJson(item.error)])
-  const error = errors[0]
   return {
     id: descriptor.id,
     interruptId: descriptor.id,
@@ -494,7 +449,6 @@ function baseSnapshot(
     generation: hydration.generation,
     status: item.status,
     errors,
-    ...(error !== undefined ? { error } : {}),
     canResolve: item.canResolve,
   }
 }
@@ -513,7 +467,6 @@ export class InterruptManager<
     Object.freeze([])
   private state: ChatInterruptState<TTools, TInterrupts> = Object.freeze({
     interrupts: this.snapshot,
-    pendingInterrupts: this.snapshot,
     interruptErrors: this.rootErrors,
     resuming: false,
   })
@@ -618,7 +571,6 @@ export class InterruptManager<
     this.resuming = false
     this.state = Object.freeze({
       interrupts: this.snapshot,
-      pendingInterrupts: this.snapshot,
       interruptErrors: this.rootErrors,
       resuming: false,
     })
@@ -708,24 +660,11 @@ export class InterruptManager<
   ): boolean {
     const item = this.items.find(
       (candidate) =>
-        (candidate.kind === 'client-tool-execution' &&
-          candidate.binding?.kind === 'client-tool-execution' &&
-          candidate.binding.toolCallId === toolCallId) ||
-        (candidate.kind === 'generic' &&
-          isClientToolExecutionReason(candidate.descriptor.reason) &&
-          candidate.descriptor.toolCallId === toolCallId &&
-          isLegacyClientToolMetadata(candidate.descriptor.metadata)),
+        candidate.kind === 'client-tool-execution' &&
+        candidate.binding?.kind === 'client-tool-execution' &&
+        candidate.binding.toolCallId === toolCallId,
     )
     if (!item) return false
-    if (item.kind !== 'client-tool-execution') {
-      this.resolveItem(
-        item.descriptor.id,
-        result.state === 'output-error'
-          ? { error: result.errorText }
-          : result.output,
-      )
-      return true
-    }
     if (result.state === 'output-available') {
       this.resolveItem(item.descriptor.id, result.output)
       return true
@@ -767,20 +706,6 @@ export class InterruptManager<
     this.maybeSubmit()
   }
 
-  resolveToolApprovalDecision(interruptId: string, approved: boolean): boolean {
-    const item = this.items.find(
-      (candidate) =>
-        candidate.descriptor.id === interruptId &&
-        (candidate.kind === 'tool-approval' ||
-          (candidate.kind === 'generic' &&
-            candidate.descriptor.reason === 'approval_required' &&
-            isLegacyApprovalMetadata(candidate.descriptor.metadata))),
-    )
-    if (!item) return false
-    this.resolveItem(item.descriptor.id, { approved })
-    return true
-  }
-
   private hydrateInterrupt(
     descriptor: Interrupt,
     hydration: InterruptManagerHydration,
@@ -788,8 +713,6 @@ export class InterruptManager<
   ): RuntimeInterrupt {
     const interrupt = cloneAndDeepFreezeJson(descriptor)
     const candidate = getDescriptorBinding(interrupt)
-    const legacyResumable =
-      candidate === undefined && isLegacyInterruptMetadata(interrupt)
 
     // No binding we understand, and nothing else identifying the descriptor as
     // ours, means this interrupt was not produced by this package's resume
@@ -803,11 +726,7 @@ export class InterruptManager<
     // the user has already filled it in. Surface it as unresolvable instead,
     // so "someone else owns this pause" is visible rather than silently
     // translated into an AI-domain interrupt.
-    //
-    // Pre-binding TanStack descriptors are still ours: they carry the legacy
-    // `metadata.kind` marker, so they keep hydrating through the generic path
-    // below.
-    if (candidate === undefined && !legacyResumable) {
+    if (candidate === undefined) {
       if (hasReservedFirstPartyBindingMarker(interrupt)) {
         return {
           descriptor: interrupt,
@@ -836,14 +755,12 @@ export class InterruptManager<
     }
 
     const correlated =
-      candidate !== undefined &&
       candidate.interruptId === interrupt.id &&
       candidate.interruptedRunId === hydration.interruptedRunId &&
       candidate.generation === hydration.generation &&
       responseSchemaHash(interrupt) === candidate.responseSchemaHash
 
     const structurallyCorrelated =
-      candidate !== undefined &&
       candidate.interruptId === interrupt.id &&
       candidate.interruptedRunId === hydration.interruptedRunId &&
       candidate.generation === hydration.generation &&
@@ -851,7 +768,6 @@ export class InterruptManager<
         (responseSchemaHash(interrupt) ?? candidate.responseSchemaHash)
 
     if (
-      candidate !== undefined &&
       hasFirstPartyGenericMarker(interrupt) &&
       (!structurallyCorrelated ||
         candidate.kind !== 'generic' ||
@@ -937,7 +853,6 @@ export class InterruptManager<
     }
 
     if (
-      candidate !== undefined &&
       candidate.kind === 'generic' &&
       candidate.definitionId !== undefined &&
       candidate.key !== undefined &&
@@ -1003,14 +918,12 @@ export class InterruptManager<
     }
 
     const resumable =
-      legacyResumable ||
-      (candidate !== undefined &&
-        candidate.interruptId === interrupt.id &&
-        candidate.interruptedRunId === hydration.interruptedRunId &&
-        candidate.generation === hydration.generation &&
-        (candidate.kind !== 'generic' ||
-          responseSchemaHash(interrupt) === undefined ||
-          candidate.responseSchemaHash === responseSchemaHash(interrupt)))
+      candidate.interruptId === interrupt.id &&
+      candidate.interruptedRunId === hydration.interruptedRunId &&
+      candidate.generation === hydration.generation &&
+      (candidate.kind !== 'generic' ||
+        responseSchemaHash(interrupt) === undefined ||
+        candidate.responseSchemaHash === responseSchemaHash(interrupt))
     return {
       descriptor: interrupt,
       binding: genericBinding(interrupt, hydration, candidate),
@@ -1147,7 +1060,6 @@ export class InterruptManager<
       this.snapshot = Object.freeze([])
       this.state = Object.freeze({
         interrupts: this.snapshot,
-        pendingInterrupts: this.snapshot,
         interruptErrors: this.rootErrors,
         resuming: this.resuming,
       })
@@ -1157,7 +1069,6 @@ export class InterruptManager<
     this.snapshot = this.buildSnapshot()
     this.state = Object.freeze({
       interrupts: this.snapshot,
-      pendingInterrupts: this.snapshot,
       interruptErrors: this.rootErrors,
       resuming: this.resuming,
     })

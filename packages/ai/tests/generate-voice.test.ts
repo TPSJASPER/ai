@@ -132,7 +132,6 @@ describe('generateVoice', () => {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
-      unitsBilled: 1,
       cost: 0.02,
     }
 

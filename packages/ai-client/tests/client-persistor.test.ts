@@ -85,7 +85,6 @@ describe('ChatPersistor', () => {
       const adapter = createMockPersistence(stored)
       const { persistor } = createPersistor(adapter)
 
-      // A legacy bare-array record is normalized to the combined shape.
       expect(persistor.readInitial()).toEqual({ messages: stored })
       expect(adapter.getItem).toHaveBeenCalledWith(CHAT_ID)
     })
@@ -129,7 +128,7 @@ describe('ChatPersistor', () => {
     it('returns the promise from an asynchronous getItem', () => {
       const stored = [createUIMessage('m-1')]
       const adapter = createMockPersistence()
-      adapter.getItem = vi.fn(() => Promise.resolve(stored))
+      adapter.getItem = vi.fn(() => Promise.resolve({ messages: stored }))
       const { persistor } = createPersistor(adapter)
 
       expect(persistor.readInitial()).toBeInstanceOf(Promise)

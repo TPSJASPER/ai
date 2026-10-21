@@ -3,7 +3,6 @@ import type { ProviderTool } from '@tanstack/ai'
 
 export {
   type LocalShellToolConfig,
-  type LocalShellTool,
   convertLocalShellToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

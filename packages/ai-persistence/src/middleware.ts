@@ -66,7 +66,6 @@ import type {
   RunAgentResumeItem,
   StreamChunk,
   Tool,
-  ToolApprovalResolution,
   BilledUsage,
   TokenUsage,
 } from '@tanstack/ai'
@@ -385,54 +384,6 @@ function runMessages(
 
 const validResumeStatuses = new Set(['resolved', 'cancelled'])
 
-function mergeMaps<K, V>(
-  left?: ReadonlyMap<K, V>,
-  right?: ReadonlyMap<K, V>,
-): Map<K, V> | undefined {
-  if (!left && !right) return undefined
-  return new Map([...(left ?? []), ...(right ?? [])])
-}
-
-function mergeSets<T>(
-  left?: ReadonlySet<T>,
-  right?: ReadonlySet<T>,
-): Set<T> | undefined {
-  if (!left && !right) return undefined
-  return new Set([...(left ?? []), ...(right ?? [])])
-}
-
-function mergeResumeToolState(
-  left: ChatResumeToolState | undefined,
-  right: ChatResumeToolState | undefined,
-): ChatResumeToolState | undefined {
-  if (!left) return right
-  if (!right) return left
-  return {
-    approvals: mergeMaps(left.approvals, right.approvals),
-    clientToolResults: mergeMaps(
-      left.clientToolResults,
-      right.clientToolResults,
-    ),
-    clientToolErrors: mergeMaps(left.clientToolErrors, right.clientToolErrors),
-    genericInterrupts: mergeMaps(
-      left.genericInterrupts,
-      right.genericInterrupts,
-    ),
-    genericInterruptRequests: mergeMaps(
-      left.genericInterruptRequests,
-      right.genericInterruptRequests,
-    ),
-    deniedToolResults: mergeMaps(
-      left.deniedToolResults,
-      right.deniedToolResults,
-    ),
-    cancelledToolCallIds: mergeSets(
-      left.cancelledToolCallIds,
-      right.cancelledToolCallIds,
-    ),
-  }
-}
-
 function rejectMixedRunPending(
   pending: Array<InterruptRecord>,
   ctx: Pick<ChatMiddlewareContext, 'threadId' | 'runId'>,
@@ -644,11 +595,6 @@ function stringField(
   return typeof value[key] === 'string' ? value[key] : undefined
 }
 
-function interruptKind(interrupt: InterruptRecord): string | undefined {
-  const metadata = objectValue(interrupt.payload.metadata)
-  return metadata ? stringField(metadata, 'kind') : undefined
-}
-
 function hasReservedInterruptBinding(payload: unknown): boolean {
   const descriptor = objectValue(payload)
   const metadata = objectValue(descriptor?.metadata)
@@ -671,17 +617,13 @@ function isPersistedInterruptDescriptor(
  * Does this pending record belong to the TanStack chat resume protocol?
  *
  * An external system can persist an AG-UI descriptor in the same durable
- * thread. A descriptor without a TanStack binding or legacy tool marker stays
- * pending for its owner, but it does not make this resume incomplete. Older
- * opaque records remain owned because their provenance cannot be known.
+ * thread. A descriptor without a TanStack binding stays pending for its owner,
+ * but it does not make this resume incomplete. Opaque records remain owned
+ * because their provenance cannot be known.
  */
 function isChatOwnedPendingInterrupt(interrupt: InterruptRecord): boolean {
-  const kind = interruptKind(interrupt)
   return (
     !isPersistedInterruptDescriptor(interrupt.payload) ||
-    stringField(interrupt.payload, 'toolCallId') !== undefined ||
-    kind === 'approval' ||
-    kind === 'client_tool' ||
     hasReservedInterruptBinding(interrupt.payload)
   )
 }
@@ -908,67 +850,6 @@ async function durableGenericResumeState(
       ),
     ),
   }
-}
-
-function resolvedApprovalDecision(entry: RunAgentResumeItem): boolean {
-  if (entry.status === 'cancelled') return false
-  const payload = objectValue(entry.payload)
-  // Fail closed: persisted resume payloads may be malformed or truncated, so a
-  // missing/non-boolean `approved` denies the tool rather than running it.
-  return typeof payload?.approved === 'boolean' ? payload.approved : false
-}
-
-/**
- * Translate the persisted pending interrupts + the resume batch into the
- * `ChatResumeToolState` the chat engine consumes. This is the server-authoritative
- * counterpart to the engine's ephemeral (client-history) reconstruction: because
- * the persistence flow sends empty client messages, the engine has no history to
- * rebuild from, so persistence supplies the resume state directly (and clears
- * `config.resume` so the ephemeral path is skipped — see `onConfig`).
- */
-function resumeToolStateFromPending(
-  pending: Array<InterruptRecord>,
-  resumeByInterruptId: Map<string, RunAgentResumeItem>,
-): ChatResumeToolState | undefined {
-  const approvals = new Map<string, ToolApprovalResolution>()
-  const clientToolResults = new Map<string, unknown>()
-  const cancelledToolCallIds = new Set<string>()
-
-  for (const interrupt of pending) {
-    const entry = resumeByInterruptId.get(interrupt.interruptId)
-    if (!entry) continue
-    if (hasReservedInterruptBinding(interrupt.payload)) continue
-
-    const kind = interruptKind(interrupt)
-    const reason = stringField(interrupt.payload, 'reason')
-    const toolCallId = stringField(interrupt.payload, 'toolCallId')
-
-    if (entry.status === 'cancelled' && toolCallId) {
-      cancelledToolCallIds.add(toolCallId)
-    }
-
-    if (kind === 'approval' || reason === 'approval_required') {
-      approvals.set(interrupt.interruptId, resolvedApprovalDecision(entry))
-      continue
-    }
-
-    if (
-      entry.status === 'resolved' &&
-      toolCallId &&
-      (kind === 'client_tool' || reason === 'client_tool_input')
-    ) {
-      clientToolResults.set(toolCallId, entry.payload)
-    }
-  }
-
-  if (
-    approvals.size === 0 &&
-    clientToolResults.size === 0 &&
-    cancelledToolCallIds.size === 0
-  ) {
-    return undefined
-  }
-  return { approvals, clientToolResults, cancelledToolCallIds }
 }
 
 function interruptPayload(interrupt: unknown): Record<string, unknown> {
@@ -1878,11 +1759,6 @@ function accumulateTokenUsage(
   // Provider-specific details are opaque, so retain the latest reported bag.
   const providerUsageDetails =
     next.providerUsageDetails ?? current.providerUsageDetails
-  const durationSeconds = sumOptionalNumber(
-    current.durationSeconds,
-    next.durationSeconds,
-  )
-  const unitsBilled = sumOptionalNumber(current.unitsBilled, next.unitsBilled)
   const billed = accumulateBilled(current.billed, next.billed)
   const cost = sumOptionalNumber(current.cost, next.cost)
 
@@ -1894,8 +1770,6 @@ function accumulateTokenUsage(
     totalTokens: current.totalTokens + next.totalTokens,
     ...(promptTokensDetails ? { promptTokensDetails } : {}),
     ...(completionTokensDetails ? { completionTokensDetails } : {}),
-    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-    ...(unitsBilled !== undefined ? { unitsBilled } : {}),
     ...(billed !== undefined ? { billed } : {}),
     ...(cost !== undefined ? { cost } : {}),
     ...(costDetails ? { costDetails } : {}),
@@ -2256,23 +2130,14 @@ export function withPersistence<TStores extends ChatTranscriptStores>(
         // (which needs a parentRunId and the client message history the
         // persistence flow deliberately omits).
         if ((config.resume?.length ?? 0) > 0) {
-          const resumeToolState = resumeToolStateFromPending(
-            ownedPending,
-            resumeByInterruptId,
-          )
-          const genericResumeState = await durableGenericResumeState(
+          const resumeToolState = await durableGenericResumeState(
             ctx,
             ownedPending,
             config.resume ?? [],
             config.tools,
           )
           patch.resume = []
-          if (resumeToolState || genericResumeState) {
-            patch.resumeToolState = mergeResumeToolState(
-              resumeToolState,
-              genericResumeState,
-            )
-          }
+          if (resumeToolState) patch.resumeToolState = resumeToolState
         }
         // Defer marking these interrupts resolved/cancelled until the run
         // succeeds (see commitPendingResumes). Committing here would consume the

@@ -88,7 +88,7 @@ export const Route = createFileRoute('/api/video')({
                 )
               }
 
-              const result = await adapter.getVideoUrl(jobId)
+              const result = await getVideoJobStatus({ adapter, jobId })
 
               return new Response(
                 JSON.stringify({

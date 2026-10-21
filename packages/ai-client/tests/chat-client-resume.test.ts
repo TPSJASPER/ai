@@ -73,16 +73,20 @@ async function createInterruptedClient(continuation: Script) {
         timestamp: Date.now(),
         outcome: {
           type: 'interrupt',
-          // Full legacy approval metadata (kind + toolName + input) hydrates as
-          // a public generic interrupt so resolveInterrupt() can drive resume.
+          // A bound generic interrupt so resolveInterrupt() can drive resume.
           interrupts: [
             {
               id: 'interrupt-1',
-              reason: 'approval_required',
+              reason: 'confirmation',
               metadata: {
-                kind: 'approval',
-                toolName: 'confirm',
-                input: {},
+                'tanstack:interruptBinding': {
+                  v: INTERRUPT_BINDING_VERSION,
+                  kind: 'generic',
+                  interruptId: 'interrupt-1',
+                  interruptedRunId: ctx?.runId ?? 'interrupted-run',
+                  generation: 0,
+                  responseSchemaHash: 'none',
+                },
               },
             },
           ],
@@ -247,12 +251,12 @@ describe('ChatClient resume', () => {
       threadId: 'thread-1',
       runId: expect.any(String),
     })
-    expect(client.getPendingInterrupts()).toEqual([
+    expect(client.getInterrupts()).toEqual([
       expect.objectContaining({ id: 'interrupt-1' }),
     ])
   })
 
-  it('resumeInterrupts sends AG-UI resume entries with the interrupted run context', async () => {
+  it('resumeInterruptsUnsafe sends AG-UI resume entries with the interrupted run context', async () => {
     const resumeItems: Array<RunAgentResumeItem> = [
       {
         interruptId: 'interrupt-1',
@@ -300,13 +304,13 @@ describe('ChatClient resume', () => {
 
     await client.sendMessage('hi')
     const resumeState = client.getResumeState()
-    await client.resumeInterrupts(resumeItems)
+    await client.resumeInterruptsUnsafe(resumeItems)
 
     expect(contexts[1]?.threadId).toBe(resumeState?.threadId)
     expect(contexts[1]?.runId).not.toBe(resumeState?.runId)
     expect(contexts[1]?.parentRunId).toBe(resumeState?.runId)
     expect(contexts[1]?.resume).toEqual(resumeItems)
-    expect(client.getPendingInterrupts()).toEqual([])
+    expect(client.getInterrupts()).toEqual([])
     expect(client.getResumeState()).toBeNull()
   })
 
@@ -356,13 +360,13 @@ describe('ChatClient resume', () => {
     const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
 
     await client.sendMessage('hi')
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
 
-    await client.resumeInterrupts(resumeItems)
+    await client.resumeInterruptsUnsafe(resumeItems)
 
     expect(contexts[1]?.runId).not.toBe('provider-continuation-run')
     expect(client.getResumeState()).toBeNull()
-    expect(client.getPendingInterrupts()).toEqual([])
+    expect(client.getInterrupts()).toEqual([])
   })
 
   it('correlates a synthesized resume finish to the client request run', async () => {
@@ -408,7 +412,7 @@ describe('ChatClient resume', () => {
     })
   })
 
-  it('resumeInterrupts reconnects with the full current message history', async () => {
+  it('resumeInterruptsUnsafe reconnects with the full current message history', async () => {
     const resumeItems: Array<RunAgentResumeItem> = [
       {
         interruptId: 'interrupt-1',
@@ -443,7 +447,7 @@ describe('ChatClient resume', () => {
     await client.sendMessage('hi')
     expect(sentMessages[0]).toHaveLength(1)
 
-    await client.resumeInterrupts(resumeItems)
+    await client.resumeInterruptsUnsafe(resumeItems)
 
     expect(contexts[1]?.resume).toEqual(resumeItems)
     expect(sentMessages[1]).not.toEqual([])
@@ -484,7 +488,7 @@ describe('ChatClient resume', () => {
     const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
 
     await client.sendMessage('hi')
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
     ;(
       client as unknown as {
         observeInterruptState: (chunk: StreamChunk) => void
@@ -496,7 +500,7 @@ describe('ChatClient resume', () => {
     })
 
     expect(client.getResumeState()).toBeNull()
-    expect(client.getPendingInterrupts()).toEqual([])
+    expect(client.getInterrupts()).toEqual([])
     await expect(client.sendMessage('fresh')).resolves.toBeUndefined()
   })
 
@@ -565,7 +569,7 @@ describe('ChatClient resume', () => {
     const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
 
     await client.sendMessage('hi')
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
     ;(
       client as unknown as {
         observeInterruptState: (chunk: StreamChunk) => void
@@ -578,7 +582,7 @@ describe('ChatClient resume', () => {
       outcome: { type: 'success' },
     })
 
-    expect(client.getPendingInterrupts()).toEqual([
+    expect(client.getInterrupts()).toEqual([
       expect.objectContaining({ id: 'interrupt-a' }),
     ])
     expect(client.getResumeState()?.runId).not.toBe('run-b')
@@ -614,7 +618,7 @@ describe('ChatClient resume', () => {
 
     await client.sendMessage('hi')
     const interruptedState = client.getResumeState()
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
     const internals = client as unknown as {
       updateRunLifecycle: (chunk: StreamChunk) => void
       observeInterruptState: (chunk: StreamChunk) => void
@@ -634,7 +638,7 @@ describe('ChatClient resume', () => {
     })
 
     expect(client.getResumeState()).toEqual(interruptedState)
-    expect(client.getPendingInterrupts()).toEqual([
+    expect(client.getInterrupts()).toEqual([
       expect.objectContaining({ id: 'interrupt-a' }),
     ])
     await expect(client.sendMessage('blocked')).rejects.toThrow(
@@ -668,7 +672,7 @@ describe('ChatClient resume', () => {
     const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
 
     await client.sendMessage('hi')
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
     ;(
       client as unknown as {
         observeInterruptState: (chunk: StreamChunk) => void
@@ -680,7 +684,7 @@ describe('ChatClient resume', () => {
       timestamp: Date.now(),
     })
 
-    expect(client.getPendingInterrupts()).toEqual([
+    expect(client.getInterrupts()).toEqual([
       expect.objectContaining({ id: 'interrupt-a' }),
     ])
     await expect(
@@ -736,7 +740,7 @@ describe('ChatClient resume', () => {
     ])
     const seenResumeStates: Array<ReturnType<ChatClient['getResumeState']>> = []
     const seenPendingInterrupts: Array<
-      ReturnType<ChatClient['getPendingInterrupts']>
+      ReturnType<ChatClient['getInterrupts']>
     > = []
     const client = new ChatClient({
       connection: adapter,
@@ -749,12 +753,12 @@ describe('ChatClient resume', () => {
 
     await client.sendMessage('hi')
     expect(client.getResumeState()).not.toBeNull()
-    expect(client.getPendingInterrupts()).toHaveLength(1)
+    expect(client.getInterrupts()).toHaveLength(1)
 
     client.clear()
 
     expect(client.getResumeState()).toBeNull()
-    expect(client.getPendingInterrupts()).toEqual([])
+    expect(client.getInterrupts()).toEqual([])
     expect(seenResumeStates.at(-1)).toBeNull()
     expect(seenPendingInterrupts.at(-1)).toEqual([])
     await expect(client.sendMessage('fresh')).resolves.toBeUndefined()
@@ -767,318 +771,6 @@ describe('ChatClient resume', () => {
       }),
     ).resolves.toBeUndefined()
     expect(contexts).toHaveLength(3)
-  })
-
-  it('addToolApprovalResponse sends a compatibility resume item', async () => {
-    const { adapter, contexts } = recordingAdapter([
-      (ctx) => [
-        {
-          type: EventType.RUN_STARTED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-        },
-        text('a'),
-        {
-          type: EventType.RUN_FINISHED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-          outcome: {
-            type: 'interrupt',
-            interrupts: [
-              {
-                id: 'approval-1',
-                reason: 'approval_required',
-                toolCallId: 'tool-1',
-                metadata: {
-                  kind: 'approval',
-                  toolName: 'lookup',
-                  input: { query: 'first' },
-                },
-              },
-            ],
-          },
-        },
-      ],
-      [
-        {
-          type: EventType.RUN_FINISHED,
-          runId: 'run-1',
-          threadId: 'thread-1',
-          timestamp: Date.now(),
-          outcome: { type: 'success' },
-        },
-      ],
-    ])
-    const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
-
-    await client.sendMessage('hi')
-    await client.addToolApprovalResponse({ id: 'approval-1', approved: true })
-
-    expect(contexts[1]?.resume).toEqual([
-      {
-        interruptId: 'approval-1',
-        status: 'resolved',
-        payload: { approved: true },
-      },
-    ])
-  })
-
-  it('addToolApprovalResponse waits for all pending approval interrupts before resuming', async () => {
-    const { adapter, contexts } = recordingAdapter([
-      (ctx) => [
-        {
-          type: EventType.RUN_STARTED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-        },
-        text('a'),
-        {
-          type: EventType.RUN_FINISHED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-          outcome: {
-            type: 'interrupt',
-            interrupts: [
-              {
-                id: 'approval-1',
-                reason: 'approval_required',
-                toolCallId: 'tool-1',
-                metadata: {
-                  kind: 'approval',
-                  toolName: 'lookup',
-                  input: { query: 'first' },
-                },
-              },
-              {
-                id: 'approval-2',
-                reason: 'approval_required',
-                toolCallId: 'tool-2',
-                metadata: {
-                  kind: 'approval',
-                  toolName: 'lookup',
-                  input: { query: 'second' },
-                },
-              },
-            ],
-          },
-        },
-      ],
-      [],
-    ])
-    const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
-
-    await client.sendMessage('hi')
-    await client.addToolApprovalResponse({ id: 'approval-1', approved: true })
-
-    expect(contexts).toHaveLength(1)
-
-    await client.addToolApprovalResponse({ id: 'approval-2', approved: false })
-
-    expect(contexts).toHaveLength(2)
-    expect(contexts[1]?.resume).toEqual([
-      {
-        interruptId: 'approval-1',
-        status: 'resolved',
-        payload: { approved: true },
-      },
-      {
-        interruptId: 'approval-2',
-        status: 'resolved',
-        payload: { approved: false },
-      },
-    ])
-  })
-
-  it('restores pending interrupts from an initial resume snapshot', async () => {
-    const { adapter, contexts } = recordingAdapter([
-      [
-        {
-          type: EventType.RUN_FINISHED,
-          runId: 'run-1',
-          threadId: 'thread-1',
-          timestamp: Date.now(),
-          outcome: { type: 'success' },
-        },
-      ],
-    ])
-    const client = new ChatClient({
-      connection: adapter,
-      initialResumeSnapshot: {
-        resumeState: {
-          threadId: 'thread-1',
-          runId: 'run-1',
-        },
-        pendingInterrupts: [
-          {
-            id: 'approval-1',
-            reason: 'approval_required',
-            toolCallId: 'tool-1',
-            metadata: {
-              kind: 'approval',
-              toolName: 'lookup',
-              input: { query: 'restored' },
-            },
-          },
-        ],
-      },
-    })
-
-    expect(client.getResumeState()).toEqual({
-      threadId: 'thread-1',
-      runId: 'run-1',
-    })
-    expect(client.getPendingInterrupts()).toEqual([
-      expect.objectContaining({ id: 'approval-1' }),
-    ])
-
-    await client.addToolApprovalResponse({ id: 'approval-1', approved: true })
-
-    expect(contexts[0]?.threadId).toBe('thread-1')
-    expect(contexts[0]?.runId).not.toBe('run-1')
-    expect(contexts[0]?.parentRunId).toBe('run-1')
-    expect(contexts[0]?.resume).toEqual([
-      {
-        interruptId: 'approval-1',
-        status: 'resolved',
-        payload: { approved: true },
-      },
-    ])
-  })
-
-  it('addToolResult for pending client-tool input sends a resume item', async () => {
-    const { adapter, contexts } = recordingAdapter([
-      (ctx) => [
-        {
-          type: EventType.RUN_STARTED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-        },
-        text('a'),
-        {
-          type: EventType.RUN_FINISHED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-          outcome: {
-            type: 'interrupt',
-            interrupts: [
-              {
-                id: 'interrupt-tool-1',
-                reason: 'client_tool_input',
-                toolCallId: 'tool-call-1',
-                metadata: {
-                  kind: 'client_tool',
-                  toolName: 'lookup',
-                  input: { query: 'first' },
-                },
-              },
-            ],
-          },
-        },
-      ],
-      [],
-    ])
-    const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
-
-    await client.sendMessage('hi')
-    const resumeState = client.getResumeState()
-    await client.addToolResult({
-      toolCallId: 'tool-call-1',
-      tool: 'lookup',
-      output: { answer: 42 },
-    })
-
-    expect(contexts[1]?.threadId).toBe(resumeState?.threadId)
-    expect(contexts[1]?.runId).not.toBe(resumeState?.runId)
-    expect(contexts[1]?.parentRunId).toBe(resumeState?.runId)
-    expect(contexts[1]?.resume).toEqual([
-      {
-        interruptId: 'interrupt-tool-1',
-        status: 'resolved',
-        payload: { answer: 42 },
-      },
-    ])
-  })
-
-  it('addToolResult waits for all pending client-tool interrupts before resuming', async () => {
-    const { adapter, contexts } = recordingAdapter([
-      (ctx) => [
-        {
-          type: EventType.RUN_STARTED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-        },
-        text('a'),
-        {
-          type: EventType.RUN_FINISHED,
-          runId: ctx?.runId ?? 'run-1',
-          threadId: ctx?.threadId ?? 'thread-1',
-          timestamp: Date.now(),
-          outcome: {
-            type: 'interrupt',
-            interrupts: [
-              {
-                id: 'interrupt-tool-1',
-                reason: 'client_tool_input',
-                toolCallId: 'tool-call-1',
-                metadata: {
-                  kind: 'client_tool',
-                  toolName: 'lookup',
-                  input: { query: 'first' },
-                },
-              },
-              {
-                id: 'interrupt-tool-2',
-                reason: 'client_tool_input',
-                toolCallId: 'tool-call-2',
-                metadata: {
-                  kind: 'client_tool',
-                  toolName: 'lookup',
-                  input: { query: 'second' },
-                },
-              },
-            ],
-          },
-        },
-      ],
-      [],
-    ])
-    const client = new ChatClient({ connection: adapter, threadId: 'thread-1' })
-
-    await client.sendMessage('hi')
-    await client.addToolResult({
-      toolCallId: 'tool-call-1',
-      tool: 'lookup',
-      output: { answer: 42 },
-    })
-
-    expect(contexts).toHaveLength(1)
-
-    await client.addToolResult({
-      toolCallId: 'tool-call-2',
-      tool: 'lookup',
-      output: { answer: 43 },
-    })
-
-    expect(contexts).toHaveLength(2)
-    expect(contexts[1]?.resume).toEqual([
-      {
-        interruptId: 'interrupt-tool-1',
-        status: 'resolved',
-        payload: { answer: 42 },
-      },
-      {
-        interruptId: 'interrupt-tool-2',
-        status: 'resolved',
-        payload: { answer: 43 },
-      },
-    ])
   })
 
   it('auto-executed client tool during parent stream defers resume until isLoading clears', async () => {
@@ -1320,7 +1012,7 @@ describe('ChatClient resume', () => {
     ])
   })
 
-  it('continues a legacy client tool emitted by a native resume', async () => {
+  it('continues a frontend tool call emitted by a native resume', async () => {
     const lookup = toolDefinition({
       name: 'lookup',
       description: 'Look up',
@@ -1346,18 +1038,23 @@ describe('ChatClient resume', () => {
             interrupts: [
               {
                 id: 'interrupt-1',
-                reason: 'approval_required',
+                reason: 'confirmation',
                 metadata: {
-                  kind: 'approval',
-                  toolName: 'confirm',
-                  input: {},
+                  'tanstack:interruptBinding': {
+                    v: INTERRUPT_BINDING_VERSION,
+                    kind: 'generic',
+                    interruptId: 'interrupt-1',
+                    interruptedRunId: ctx?.runId ?? 'interrupted-run',
+                    generation: 0,
+                    responseSchemaHash: 'none',
+                  },
                 },
               },
             ],
           },
         },
       ],
-      // The native resume emits a legacy client tool, not another interrupt.
+      // The native resume emits a frontend tool call, not another interrupt.
       (ctx) => [
         {
           type: EventType.RUN_STARTED,
@@ -1367,36 +1064,26 @@ describe('ChatClient resume', () => {
         },
         {
           type: EventType.TOOL_CALL_START,
-          toolCallId: 'legacy-tool-call',
+          toolCallId: 'frontend-tool-call',
           toolCallName: 'lookup',
           toolName: 'lookup',
           timestamp: Date.now(),
         },
         {
           type: EventType.TOOL_CALL_ARGS,
-          toolCallId: 'legacy-tool-call',
+          toolCallId: 'frontend-tool-call',
           delta: JSON.stringify({ query: 'answer' }),
-          timestamp: Date.now(),
-        },
-        {
-          type: EventType.CUSTOM,
-          name: 'tool-input-available',
-          value: {
-            toolCallId: 'legacy-tool-call',
-            toolName: 'lookup',
-            input: { query: 'answer' },
-          },
           timestamp: Date.now(),
         },
         {
           type: EventType.RUN_FINISHED,
           runId: ctx?.runId ?? 'resume-run',
           threadId: ctx?.threadId ?? 'thread-1',
-          metadata: { tanstack: { finishReason: 'tool_calls' } },
+          metadata: { tanstack: { finishReason: 'stop' } },
           timestamp: Date.now(),
         },
       ],
-      // The legacy tool result continues through an ordinary request.
+      // The tool result continues through an ordinary request.
       (ctx) => [
         {
           type: EventType.RUN_STARTED,

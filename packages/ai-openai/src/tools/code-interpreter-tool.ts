@@ -4,7 +4,6 @@ import type { CodeInterpreterToolConfig } from '@tanstack/openai-base'
 
 export {
   type CodeInterpreterToolConfig,
-  type CodeInterpreterTool,
   convertCodeInterpreterToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

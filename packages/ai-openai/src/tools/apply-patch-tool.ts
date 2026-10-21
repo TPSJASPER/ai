@@ -3,7 +3,6 @@ import type { ProviderTool } from '@tanstack/ai'
 
 export {
   type ApplyPatchToolConfig,
-  type ApplyPatchTool,
   convertApplyPatchToolToAdapterFormat,
 } from '@tanstack/openai-base'
 

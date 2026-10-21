@@ -322,7 +322,6 @@ describe('Fal Transcription Adapter', () => {
       completionTokens: 0,
       totalTokens: 0,
       billed: { quantity: 1.5, unit: 'units' },
-      unitsBilled: 1.5,
     })
   })
 

@@ -29,7 +29,6 @@ describe('injectChat', () => {
       })
 
       expect(Object.isFrozen(result.interrupts())).toBe(true)
-      expect(result.pendingInterrupts()).toBe(result.interrupts())
       expect(result.interrupts()[0]).toMatchObject({
         id: 'staged-interrupt',
         status: 'pending',
@@ -134,7 +133,7 @@ describe('injectChat — streaming', () => {
     })
     const { result, flush } = renderInjectChat({
       connection: adapter,
-      body: { provider: 'openai' },
+      forwardedProps: { provider: 'openai' },
     })
 
     await result.sendMessage('Hi', {
@@ -200,25 +199,28 @@ describe('injectChat — reactive options', () => {
     expect(result.isSubscribed()).toBe(false)
   })
 
-  it('pushes body-signal changes to the client', async () => {
+  it('pushes forwardedProps-signal changes to the client', async () => {
     const updateSpy = vi.spyOn(ChatClient.prototype, 'updateOptions')
     try {
       const adapter = createMockConnectionAdapter()
-      const body = signal<Record<string, any>>({ model: 'a' })
-      const { flush } = renderInjectChat({ connection: adapter, body })
+      const forwardedProps = signal<Record<string, any>>({ model: 'a' })
+      const { flush } = renderInjectChat({
+        connection: adapter,
+        forwardedProps,
+      })
 
       // initial effect run picks up { model: 'a' }
       flush()
       await tick()
       updateSpy.mockClear()
 
-      body.set({ model: 'b' })
+      forwardedProps.set({ model: 'b' })
       flush()
       await tick()
 
       expect(updateSpy).toHaveBeenCalled()
       expect(updateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ body: { model: 'b' } }),
+        expect.objectContaining({ forwardedProps: { model: 'b' } }),
       )
     } finally {
       updateSpy.mockRestore()
@@ -231,7 +233,7 @@ describe('injectChat — resume', () => {
     // `onResumeStateChange` is NOT an `injectChat` option (it is omitted here
     // exactly as in React / Solid / Vue / Svelte / Preact). The same
     // information reaches the caller as reactive state: the pending interrupts
-    // through `interrupts` / `pendingInterrupts` (and the
+    // through `interrupts` (and the
     // `onInterruptStateChange` callback), and the run identity through the
     // `runId` signal while a run is in flight.
     const onInterruptStateChange = vi.fn()
@@ -273,7 +275,6 @@ describe('injectChat — resume', () => {
     expect(result.interrupts()).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'interrupt-1' })]),
     )
-    expect(result.pendingInterrupts()).toBe(result.interrupts())
     expect(onInterruptStateChange).toHaveBeenCalledWith(
       expect.objectContaining({
         interrupts: expect.arrayContaining([

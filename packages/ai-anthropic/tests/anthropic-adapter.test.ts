@@ -206,7 +206,6 @@ describe('Anthropic adapter option mapping', () => {
 
     const adapter = createAdapter('claude-opus-4-1')
     const metadata = {
-      mediaType: 'application/pdf',
       cache_control: { type: 'ephemeral' },
       citations: { enabled: true },
       context: 'Quarterly report',
@@ -276,7 +275,6 @@ describe('Anthropic adapter option mapping', () => {
               type: 'image',
               source: { type: 'url', value: 'https://example.com/a.png' },
               metadata: {
-                mediaType: 'image/png',
                 cache_control: { type: 'ephemeral' },
                 filename: 'a.png',
               },
@@ -494,7 +492,6 @@ describe('Anthropic adapter option mapping', () => {
     const providerOptions = {
       container: {
         id: 'container-weather',
-        skills: [{ skill_id: 'forecast', type: 'custom', version: '1' }],
       },
       mcp_servers: [
         {

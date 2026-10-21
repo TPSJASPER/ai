@@ -253,7 +253,9 @@ describe('Bedrock replay parity', () => {
     expect(new Set(signatures.map((chunk) => chunk.entityId)).size).toBe(3)
     expect(signatures[2]?.entityId).toMatch(/^redacted_thinking-/)
     expect(
-      chunks.filter((chunk) => chunk.type === EventType.STEP_STARTED),
+      chunks.filter(
+        (chunk) => chunk.type === EventType.REASONING_MESSAGE_START,
+      ),
     ).toHaveLength(3)
     expect(
       chunks.find((chunk) => chunk.type === EventType.RUN_FINISHED),
@@ -592,8 +594,5 @@ it('marks a late redacted transition even when the encoded signature is unchange
     (chunk) => chunk.type === EventType.REASONING_ENCRYPTED_VALUE,
   )
   expect(encrypted).toHaveLength(2)
-  expect(encrypted[1]).toMatchObject({
-    encryptedValue: 'AAH/',
-    stepId: expect.stringMatching(/^redacted_thinking-/),
-  })
+  expect(encrypted[1]).toMatchObject({ encryptedValue: 'AAH/' })
 })

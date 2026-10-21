@@ -14,11 +14,6 @@ export type UseRegisterWebMCPToolsOptions<
   /** Receives an asynchronous registration failure. */
   onError?: (error: unknown) => void
 }
-/** @deprecated Use `UseRegisterWebMCPToolsOptions`. Removed in 1.0.0. */
-export type UseWebMCPToolsOptions<
-  TTools extends ReadonlyArray<AnyClientTool>,
-  TContext = InferredClientContext<TTools>,
-> = UseRegisterWebMCPToolsOptions<TTools, TContext>
 type UseRegisterWebMCPToolsArguments<
   TTools extends ReadonlyArray<AnyClientTool>,
   TContext,
@@ -49,8 +44,6 @@ export declare function useRegisterWebMCPTools<
   tools: TTools,
   ...[options]: UseRegisterWebMCPToolsArguments<TTools, TContext>
 ): void
-/** @deprecated Use `useRegisterWebMCPTools`. Removed in 1.0.0. */
-export declare const useWebMCPTools: typeof useRegisterWebMCPTools
 /** Options for {@link usePageWebMCPTools}. */
 export type UsePageWebMCPToolsOptions = Omit<
   SubscribeWebMCPToolsOptions,

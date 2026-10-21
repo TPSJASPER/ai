@@ -134,8 +134,6 @@ type ChatClientUpdateOptionsWithoutContext<
 > = {
   connection?: ConnectionAdapter
   fetcher?: ChatFetcher
-  /** @deprecated Use `forwardedProps` instead. */
-  body?: Record<string, any>
   forwardedProps?: Record<string, any>
   byok?: ByokClient
   byokProvider?: () => string | undefined
@@ -375,9 +373,6 @@ function rebuildsAssistantMessage(chunk: StreamChunk): boolean {
       chunk.encryptedValue.length > 0
     )
   }
-  if (chunk.type === 'STEP_FINISHED') {
-    return 'signature' in chunk && Boolean(chunk.signature)
-  }
   return REJOIN_REBUILD_TRIGGERS.has(chunk.type)
 }
 
@@ -481,7 +476,6 @@ export class ChatClient<
       isHydrating: false,
       interruptState: {
         interrupts: Object.freeze([]),
-        pendingInterrupts: Object.freeze([]),
         interruptErrors: Object.freeze([]),
         resuming: false,
       } as ChatInterruptState<TTools, TInterrupts>,
@@ -538,11 +532,6 @@ export class ChatClient<
   private pendingResumeItems: Array<RunAgentResumeItem> | null = null
   private activeResumeThreadId: string | null = null
   private activeResumeRunId: string | null = null
-  // Track the legacy `body` option and the canonical `forwardedProps`
-  // option as separate slots so that `updateOptions({ forwardedProps })`
-  // doesn't wipe a previously-set `body` (and vice versa). They are
-  // merged on every send, with `forwardedProps` winning on key collision.
-  private bodyOption: Record<string, any> = {}
   private forwardedPropsOption: Record<string, any> = {}
   private byok: ByokClient | undefined
   private byokProvider: (() => string | undefined) | undefined
@@ -711,12 +700,6 @@ export class ChatClient<
     } else {
       this.historyPageSize = undefined
     }
-    // Both `body` (deprecated) and `forwardedProps` populate the AG-UI
-    // `RunAgentInput.forwardedProps` wire field. They are stored
-    // separately so `updateOptions` can replace one without touching the
-    // other; the merge happens at send time, with `forwardedProps`
-    // winning on key collision.
-    this.bodyOption = options.body || {}
     this.forwardedPropsOption = options.forwardedProps || {}
     this.byok = options.byok
     this.byokProvider = options.byokProvider
@@ -1669,14 +1652,6 @@ export class ChatClient<
     >
   }
 
-  /** @deprecated Use getInterrupts(). */
-  getPendingInterrupts(): BoundInterrupts<TTools, TInterrupts> {
-    return this.interruptManager.getInterrupts() as BoundInterrupts<
-      TTools,
-      TInterrupts
-    >
-  }
-
   resolveInterrupts(approved: boolean): void
   resolveInterrupts(
     resolver: (
@@ -1753,14 +1728,6 @@ export class ChatClient<
     this.pendingResumeParentRunId = target.runId
     this.pendingResumeItems = [...resume]
     return this.streamResponse()
-  }
-
-  /** @deprecated Use bound interrupt methods or resumeInterruptsUnsafe(). */
-  resumeInterrupts(
-    resume: Array<RunAgentResumeItem>,
-    state?: ChatResumeState,
-  ): Promise<boolean> {
-    return this.resumeInterruptsUnsafe(resume, state)
   }
 
   private async submitInterruptBatch(
@@ -2431,7 +2398,7 @@ export class ChatClient<
    * @param sendOptions - Per-call overrides. `{ whenBusy }` overrides the
    *                      queue policy for this one send. `{ body }`
    *                      shallow-merges with `body` and with the chat-level
-   *                      `body` / `forwardedProps`. `sendOptions.body` wins
+   *                      `forwardedProps`. `sendOptions.body` wins
    *                      on key collisions. Framework hooks forward this
    *                      object as their second argument.
    *
@@ -2483,7 +2450,7 @@ export class ChatClient<
     }
     if (this.hasPendingInterrupts()) {
       throw new Error(
-        'ChatClient: cannot send normal input while pending interrupts exist. Use resumeInterrupts() instead.',
+        'ChatClient: cannot send normal input while pending interrupts exist. Resolve the interrupts first.',
       )
     }
 
@@ -2640,7 +2607,7 @@ export class ChatClient<
     this.mountDevtools()
     if (this.hasPendingInterrupts()) {
       throw new Error(
-        'ChatClient: cannot append normal input while pending interrupts exist. Use resumeInterrupts() instead.',
+        'ChatClient: cannot append normal input while pending interrupts exist. Resolve the interrupts first.',
       )
     }
     // Normalize the message to ensure it has id and createdAt
@@ -2746,17 +2713,14 @@ export class ChatClient<
         return false
       }
 
-      // Merge sources for the wire `forwardedProps` field, in priority
-      // order (later spreads win):
-      //   1. Legacy `body` option (deprecated).
-      //   2. Canonical `forwardedProps` option (wins over `body`).
-      //   3. Per-call body (`pendingMessageBody`: positional + sendOptions.body).
+      // Merge sources for the wire `forwardedProps` field (later spreads win):
+      //   1. The `forwardedProps` option.
+      //   2. Per-call body (`pendingMessageBody`: positional + sendOptions.body).
       // The AG-UI standard `threadId` is sent at the wire's top level for
       // run/conversation correlation, so we no longer auto-emit a separate
       // `conversationId` here — `chat({ threadId })` server-side covers the
       // same role for devtools/observability.
       const mergedBody = {
-        ...this.bodyOption,
         ...this.forwardedPropsOption,
         ...this.pendingMessageBody,
       }
@@ -3123,8 +3087,8 @@ export class ChatClient<
           clientTool?.outputSchema && isStandardSchema(clientTool.outputSchema)
             ? await this.validateClientToolOutput(clientTool, result.output)
             : result.output
-        // Only an interrupt resume needs JSON output. The legacy continuation
-        // keeps the raw value.
+        // Only an interrupt resume needs JSON output. The message-based
+        // continuation keeps the raw value.
         if (
           this.interruptManager
             .getDescriptors()
@@ -3176,7 +3140,8 @@ export class ChatClient<
           )
     if (resolvedViaInterrupt) {
       // Interrupt manager stages/submits the resume batch (deferred until the
-      // parent stream settles when still loading). Skip legacy continuation.
+      // parent stream settles when still loading). Skip the message-based
+      // continuation.
       return
     }
 
@@ -3207,64 +3172,6 @@ export class ChatClient<
       )
     }
     return validation.data
-  }
-
-  /**
-   * Respond to a tool approval request
-   */
-  async addToolApprovalResponse(response: {
-    id: string // approval.id, not toolCallId
-    approved: boolean
-  }): Promise<void> {
-    // Reflect the decision on the tool-call part so approval UIs that render
-    // from `part.state` (the deprecated pre-interrupt pattern) clear the prompt
-    // and show the response. The bound interrupt resolution below drives the
-    // actual continuation; this keeps the legacy message-state surface in sync.
-    this.processor.addToolApprovalResponse(response.id, response.approved)
-    this.devtoolsBridge.emitSnapshot()
-
-    if (
-      this.interruptManager.resolveToolApprovalDecision(
-        response.id,
-        response.approved,
-      )
-    ) {
-      return
-    }
-    // Find the tool call ID from the approval ID
-    const messages = this.processor.getMessages()
-    let foundToolCallId: string | undefined
-
-    for (const msg of messages) {
-      const toolCallPart = msg.parts.find(
-        (p: MessagePart): p is ToolCallPart =>
-          p.type === 'tool-call' && p.approval?.id === response.id,
-      )
-      if (toolCallPart) {
-        foundToolCallId = toolCallPart.id
-        break
-      }
-    }
-
-    if (foundToolCallId) {
-      this.events.toolApprovalResponded(
-        response.id,
-        foundToolCallId,
-        response.approved,
-      )
-    }
-
-    // Add response via processor
-    this.processor.addToolApprovalResponse(response.id, response.approved)
-    this.devtoolsBridge.emitSnapshot()
-
-    // If stream is in progress, queue continuation check for after it ends
-    if (this.isLoading) {
-      this.queuePostStreamAction(() => this.checkForContinuation())
-      return
-    }
-
-    await this.checkForContinuation()
   }
 
   /**
@@ -3343,7 +3250,7 @@ export class ChatClient<
     // Ownership follows the descriptors, not the submission handle. Generic
     // interrupts settle the resume stream through a post-stream action that
     // runs before `submitInterruptBatch`'s `finally` clears the handle, so
-    // gating on the handle alone would strand a legacy client tool that the
+    // gating on the handle alone would strand a frontend tool call that the
     // native resume itself emitted (#1106).
     if (this.activeInterruptSubmission && this.hasPendingInterrupts()) {
       return false
@@ -3777,13 +3684,8 @@ export class ChatClient<
         this.subscribe()
       }
     }
-    // Replace each wire-payload slot independently so callers can update one
-    // without wiping the other. Passing `undefined` for `body` or
-    // `forwardedProps` leaves that slot unchanged; context is cleared when the
-    // key is present with an `undefined` value.
-    if (options.body !== undefined) {
-      this.bodyOption = options.body
-    }
+    // Passing `undefined` for `forwardedProps` leaves it unchanged; context
+    // is cleared when the key is present with an `undefined` value.
     if (options.forwardedProps !== undefined) {
       this.forwardedPropsOption = options.forwardedProps
     }

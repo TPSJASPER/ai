@@ -17,7 +17,6 @@ type ChatHookOverrides<
   threadId?: string
   live?: boolean
   forwardedProps?: Record<string, any>
-  body?: Record<string, any>
   initialMessages?: UseChatOptions<
     TTools,
     TSchema,

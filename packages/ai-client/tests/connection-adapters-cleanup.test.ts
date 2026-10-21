@@ -85,21 +85,3 @@ describe.each([
     expect(body.locked).toBe(false)
   })
 })
-
-it('cancels an SSE response after the DONE sentinel', async () => {
-  const cancel = vi.fn()
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
-    },
-    cancel,
-  })
-  const adapter = fetchServerSentEvents('/chat', {
-    fetchClient: async () => new Response(body),
-  })
-  const chunks = []
-  for await (const received of adapter.connect([])) chunks.push(received)
-  expect(chunks).toEqual([expect.objectContaining({ type: 'RUN_FINISHED' })])
-  expect(cancel).toHaveBeenCalledOnce()
-  expect(body.locked).toBe(false)
-})

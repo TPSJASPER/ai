@@ -141,7 +141,7 @@ function videoAdapter(url: string, expiresAt?: Date): VideoAdapter<string> {
       jobId: 'video-job-1',
       status: 'completed' as const,
     })),
-    getVideoUrl: vi.fn(async () => ({ jobId: 'video-job-1', url, expiresAt })),
+    getVideo: vi.fn(async () => ({ jobId: 'video-job-1', url, expiresAt })),
     availableDurations: () => ({ kind: 'none' }),
     snapDuration: () => undefined,
   }
@@ -301,30 +301,6 @@ describe('withGenerationPersistence generation artifacts', () => {
     expect(record?.blobKey).toBe(expectedKey)
     await expect(
       (await retrieveBlob(persistence, artifactId))?.text(),
-    ).resolves.toBe('output-image')
-  })
-
-  it('resolves a record written before blobKey existed via the default convention', async () => {
-    const persistence = memoryPersistence()
-
-    await generateImage({
-      adapter: imageAdapter(),
-      prompt: 'make an image',
-      threadId: 'thread-legacy',
-      runId: 'run-legacy',
-      middleware: [
-        withGenerationPersistence(persistence, { threadId: 'thread-legacy' }),
-      ],
-    })
-    const stored = (await persistence.stores.artifacts!.list('run-legacy'))[0]!
-
-    // Simulate a row saved before the column existed: no blobKey at all.
-    const { blobKey: _dropped, ...legacy } = stored
-    await persistence.stores.artifacts!.save(legacy)
-
-    // Still readable — the fallback is what makes blobKey a non-breaking add.
-    await expect(
-      (await retrieveBlob(persistence, legacy.artifactId))?.text(),
     ).resolves.toBe('output-image')
   })
 

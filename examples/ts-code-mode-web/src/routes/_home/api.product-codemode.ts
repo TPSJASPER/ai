@@ -232,7 +232,7 @@ export const Route = createFileRoute('/_home/api/product-codemode')({
 
         const abortController = new AbortController()
         const body = await request.json()
-        const { messages, data } = body
+        const { messages, forwardedProps: data } = body
 
         const provider: Provider = data?.provider || 'anthropic'
         const model: string | undefined = data?.model

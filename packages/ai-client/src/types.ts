@@ -74,8 +74,6 @@ export interface BoundInterruptBase {
   readonly generation: number
   readonly status: InterruptItemStatus
   readonly errors: ReadonlyArray<ItemInterruptError>
-  /** @deprecated Use `errors[0]`. */
-  readonly error?: ItemInterruptError
   /**
    * Whether the binding/schema allows resolution at hydrate time.
    * Does not flip on submit/expiry — gate UI on `status`, `resuming`, and
@@ -271,15 +269,13 @@ export interface ChatInterruptState<
     readonly [],
 > {
   readonly interrupts: BoundInterrupts<TTools, TInterrupts>
-  /** @deprecated Use `interrupts`. Same snapshot today. */
-  readonly pendingInterrupts: BoundInterrupts<TTools, TInterrupts>
   readonly interruptErrors: ReadonlyArray<BatchInterruptError>
   readonly resuming: boolean
 }
 
 /**
  * `messages` is the full UIMessage history (not a delta). `data` is the
- * merged body — `ChatClientOptions.body` plus any per-call data passed to
+ * merged body — `ChatClientOptions.forwardedProps` plus any per-call data passed to
  * `sendMessage(...)`. `threadId` / `runId` are the AG-UI correlation ids
  * the chat client uses to track this turn — forward them to your server
  * if it needs to correlate requests.
@@ -848,10 +844,6 @@ export interface ChatPersistedState<
  * message transcript and the resume snapshot as one {@link ChatPersistedState}
  * record, so a full page reload restores the conversation AND can rejoin an
  * in-flight run / rehydrate pending interrupts.
- *
- * For backward compatibility `getItem` may also return a bare `UIMessage[]`
- * (the legacy messages-only format); the client normalizes it to
- * `{ messages }`. `setItem` always writes the combined record.
  */
 export interface ChatClientPersistence<
   TTools extends ReadonlyArray<AnyClientTool> = any,
@@ -860,12 +852,9 @@ export interface ChatClientPersistence<
     id: string,
   ) =>
     | ChatPersistedState<TTools>
-    | Array<UIMessage<TTools>>
     | null
     | undefined
-    | Promise<
-        ChatPersistedState<TTools> | Array<UIMessage<TTools>> | null | undefined
-      >
+    | Promise<ChatPersistedState<TTools> | null | undefined>
   setItem: (
     id: string,
     state: ChatPersistedState<TTools>,
@@ -1034,20 +1023,8 @@ export interface ChatClientBaseOptions<
    * AG-UI `RunAgentInput.forwardedProps` field. Use this for per-session
    * options like provider/model selection or feature flags that the
    * server endpoint should read.
-   *
-   * Replaces the legacy `body` option. If both are provided,
-   * `forwardedProps` wins on key collision.
    */
   forwardedProps?: Record<string, any>
-
-  /**
-   * @deprecated Use `forwardedProps` instead. `body` continues to work
-   * unchanged — its values are merged into the AG-UI
-   * `RunAgentInput.forwardedProps` field on the wire and are also
-   * mirrored under the legacy `data` field for servers that have not
-   * migrated yet. Will be removed in a future major release.
-   */
-  body?: Record<string, any>
 
   /**
    * Optional BYOK keyring. On each send the client prepares the resolved

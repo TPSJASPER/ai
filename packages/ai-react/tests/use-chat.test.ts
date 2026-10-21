@@ -59,7 +59,6 @@ describe('useChat', () => {
         { source: 'hydrate' },
       )
       expect(Object.isFrozen(result.current.interrupts)).toBe(true)
-      expect(result.current.pendingInterrupts).toBe(result.current.interrupts)
       expect(result.current.interrupts[0]).toMatchObject({
         id: 'staged-interrupt',
         status: 'pending',
@@ -258,7 +257,7 @@ describe('useChat', () => {
         },
       ]
       const persistence = {
-        getItem: vi.fn(() => persistedMessages),
+        getItem: vi.fn(() => ({ messages: persistedMessages })),
         setItem: vi.fn(),
         removeItem: vi.fn(),
       }
@@ -326,7 +325,7 @@ describe('useChat', () => {
         },
       ]
       const persistence = {
-        getItem: vi.fn(() => persistedMessages),
+        getItem: vi.fn(() => ({ messages: persistedMessages })),
         setItem: vi.fn(),
         removeItem: vi.fn(),
       }
@@ -482,7 +481,7 @@ describe('useChat', () => {
 
         getItem(id: string) {
           this.calls.push(`get:${id}`)
-          return []
+          return { messages: [] }
         }
 
         setItem(id: string) {
@@ -716,7 +715,7 @@ describe('useChat', () => {
         },
       ]
       const persistence = {
-        getItem: vi.fn(() => []),
+        getItem: vi.fn(() => ({ messages: [] })),
         setItem: vi.fn(),
         removeItem: vi.fn(),
       }
@@ -735,7 +734,7 @@ describe('useChat', () => {
     })
 
     it('should ignore async persisted messages from a previous id', async () => {
-      const oldHydration = createDeferred<Array<UIMessage>>()
+      const oldHydration = createDeferred<{ messages: Array<UIMessage> }>()
       const oldMessages: Array<UIMessage> = [
         {
           id: 'old-persisted',
@@ -754,7 +753,7 @@ describe('useChat', () => {
       ]
       const persistence = {
         getItem: vi.fn((id: string) =>
-          id === 'old-chat' ? oldHydration.promise : newMessages,
+          id === 'old-chat' ? oldHydration.promise : { messages: newMessages },
         ),
         setItem: vi.fn(),
         removeItem: vi.fn(),
@@ -782,7 +781,7 @@ describe('useChat', () => {
       })
 
       await act(async () => {
-        oldHydration.resolve(oldMessages)
+        oldHydration.resolve({ messages: oldMessages })
         await oldHydration.promise
       })
 
@@ -886,13 +885,13 @@ describe('useChat', () => {
     it('does not expose delivery-cursor resume/autoResume machinery', () => {
       // Delivery-durability resume is now transparent (the resumable SSE
       // connection adapter reattaches via native Last-EventID). useChat only
-      // keeps interrupt (state) resume: `resumeInterrupts` + `runId`.
+      // keeps interrupt (state) resume: `resumeInterruptsUnsafe` + `runId`.
       const adapter = createMockConnectionAdapter()
       const { result } = renderUseChat({ connection: adapter })
 
       expect(result.current).not.toHaveProperty('resume')
       expect(result.current).not.toHaveProperty('resumeState')
-      expect(typeof result.current.resumeInterrupts).toBe('function')
+      expect(typeof result.current.resumeInterruptsUnsafe).toBe('function')
       expect(result.current.runId).toBeNull()
     })
 
@@ -1207,7 +1206,7 @@ describe('useChat', () => {
 
       const { result } = renderUseChat({
         connection: adapter,
-        body: { provider: 'openai' },
+        forwardedProps: { provider: 'openai' },
       })
 
       await result.current.sendMessage('Test', {
@@ -1905,16 +1904,16 @@ describe('useChat', () => {
         expect(result.current.messages).toBe(initialMessages)
       })
 
-      it('should handle body changes', () => {
+      it('should handle forwardedProps changes', () => {
         const adapter = createMockConnectionAdapter()
         const { result, rerender } = renderUseChat({
           connection: adapter,
-          body: { userId: '123' },
+          forwardedProps: { userId: '123' },
         })
 
         rerender({
           connection: adapter,
-          body: { userId: '456' },
+          forwardedProps: { userId: '456' },
         })
 
         // Should not throw
@@ -2369,57 +2368,6 @@ describe('useChat', () => {
               (p) => p.type === 'tool-call' && p.id === toolCallPart.id,
             )
             expect(updatedToolCall).toBeDefined()
-          })
-        }
-      })
-
-      it('should handle addToolApprovalResponse', async () => {
-        const toolCalls = createToolCallChunks([
-          { id: 'tool-1', name: 'testTool', arguments: '{"param": "value"}' },
-        ])
-        const adapter = createMockConnectionAdapter({ chunks: toolCalls })
-        const { result } = renderUseChat({
-          connection: adapter,
-        })
-
-        await result.current.sendMessage('Test')
-
-        await waitFor(() => {
-          const assistantMessage = result.current.messages.find(
-            (m) => m.role === 'assistant',
-          )
-          expect(assistantMessage).toBeDefined()
-        })
-
-        // Find tool call with approval
-        const assistantMessage = result.current.messages.find(
-          (m) => m.role === 'assistant',
-        )
-        const toolCallPart = assistantMessage?.parts.find(
-          (p) => p.type === 'tool-call' && p.approval,
-        )
-
-        if (
-          toolCallPart &&
-          toolCallPart.type === 'tool-call' &&
-          toolCallPart.approval
-        ) {
-          await result.current.addToolApprovalResponse({
-            id: toolCallPart.approval.id,
-            approved: true,
-          })
-
-          // Should update approval state
-          await waitFor(() => {
-            const updatedMessage = result.current.messages.find(
-              (m) => m.role === 'assistant',
-            )
-            const updatedToolCall = updatedMessage?.parts.find(
-              (p) => p.type === 'tool-call' && p.id === toolCallPart.id,
-            )
-            if (updatedToolCall && updatedToolCall.type === 'tool-call') {
-              expect(updatedToolCall.approval?.approved).toBe(true)
-            }
           })
         }
       })
@@ -2879,7 +2827,7 @@ describe('useChat', () => {
       const { result } = renderUseChat({ connection: adapter, live: true })
 
       await waitFor(() => {
-        expect(result.current.pendingInterrupts).toEqual([
+        expect(result.current.interrupts).toEqual([
           expect.objectContaining({ id: 'interrupt-live' }),
         ])
       })

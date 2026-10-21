@@ -10,7 +10,6 @@ const done = [ev.runStarted(), ev.runFinished('stop')]
 interface CallerIds {
   promptCache?: PromptCacheOptions
   threadId?: string
-  conversationId?: string
 }
 
 /** Run one chat() call and give back the first adapter call. */
@@ -38,11 +37,6 @@ describe('chat({ promptCache })', () => {
       'a threadId is the key',
       { threadId: 't1' },
       { retention: 'short', key: 't1' },
-    ],
-    [
-      'a conversationId alone is the key',
-      { conversationId: 'c1' },
-      { retention: 'short', key: 'c1' },
     ],
     ['an empty threadId is no key', { threadId: '' }, { retention: 'short' }],
     [

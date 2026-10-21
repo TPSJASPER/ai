@@ -1210,8 +1210,6 @@ async function* translateInteractionEvents(
   let sawFunctionCall = false
   const toolCalls = new Map<string, ToolCallState>()
   let nextToolIndex = 0
-  let thinkingStepId: string | null = null
-  let thinkingAccumulated = ''
   let reasoningMessageId: string | null = null
   let hasClosedReasoning = false
   // SDK 2.x routes events by step `index`, not by content id. We need to
@@ -1245,7 +1243,6 @@ async function* translateInteractionEvents(
       // interleaves text → thought → text on some models) opens a
       // fresh reasoning block instead of re-using an already-ended
       // messageId, which would violate AG-UI ordering.
-      thinkingStepId = null
       reasoningMessageId = null
       hasClosedReasoning = false
     }
@@ -1379,8 +1376,7 @@ async function* translateInteractionEvents(
             // `step.delta { thought_summary }` events. If the server
             // ships a non-empty `summary` array up-front (rare, unary
             // responses), surface it immediately.
-            if (thinkingStepId === null || reasoningMessageId === null) {
-              thinkingStepId = generateId(adapterName)
+            if (reasoningMessageId === null) {
               reasoningMessageId = generateId(adapterName)
               yield {
                 type: EventType.REASONING_START,
@@ -1395,33 +1391,15 @@ async function* translateInteractionEvents(
                 model,
                 timestamp,
               }
-              yield {
-                type: EventType.STEP_STARTED,
-                stepName: thinkingStepId,
-                stepId: thinkingStepId,
-                model,
-                timestamp,
-                stepType: 'thinking',
-              }
             }
             for (const part of step.summary ?? []) {
               if (part.type !== 'text' || !part.text) continue
-              thinkingAccumulated += part.text
               yield {
                 type: EventType.REASONING_MESSAGE_CONTENT,
                 messageId: reasoningMessageId,
                 delta: part.text,
                 model,
                 timestamp,
-              }
-              yield {
-                type: EventType.STEP_FINISHED,
-                stepName: thinkingStepId,
-                stepId: thinkingStepId,
-                model,
-                timestamp,
-                delta: part.text,
-                content: thinkingAccumulated,
               }
             }
             break
@@ -1631,8 +1609,7 @@ async function* translateInteractionEvents(
             const thoughtText =
               delta.content && 'text' in delta.content ? delta.content.text : ''
             if (!thoughtText) break
-            if (thinkingStepId === null || reasoningMessageId === null) {
-              thinkingStepId = generateId(adapterName)
+            if (reasoningMessageId === null) {
               reasoningMessageId = generateId(adapterName)
               yield {
                 type: EventType.REASONING_START,
@@ -1647,31 +1624,13 @@ async function* translateInteractionEvents(
                 model,
                 timestamp,
               }
-              yield {
-                type: EventType.STEP_STARTED,
-                stepName: thinkingStepId,
-                stepId: thinkingStepId,
-                model,
-                timestamp,
-                stepType: 'thinking',
-              }
             }
-            thinkingAccumulated += thoughtText
             yield {
               type: EventType.REASONING_MESSAGE_CONTENT,
               messageId: reasoningMessageId,
               delta: thoughtText,
               model,
               timestamp,
-            }
-            yield {
-              type: EventType.STEP_FINISHED,
-              stepName: thinkingStepId,
-              stepId: thinkingStepId,
-              model,
-              timestamp,
-              delta: thoughtText,
-              content: thinkingAccumulated,
             }
             break
           }

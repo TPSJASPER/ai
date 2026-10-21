@@ -65,7 +65,7 @@ export function useChat<
   // undefined), `?.` no-ops — unlike `client.updateOptions`, which silently
   // skips undefined and leaves the old callback installed.
   //
-  // Conditional spreads for `initialMessages`, `body`, `forwardedProps`, and
+  // Conditional spreads for `initialMessages`, `forwardedProps`, and
   // `tools`: the ChatClient target declares those as strict-optional
   // (`field?: T`), so under `exactOptionalPropertyTypes` we omit the key when
   // the source value is `undefined` instead of assigning `undefined`.
@@ -103,7 +103,6 @@ export function useChat<
     ...(options.initialResumeSnapshot !== undefined && {
       initialResumeSnapshot: options.initialResumeSnapshot,
     }),
-    ...(options.body !== undefined && { body: options.body }),
     ...(options.forwardedProps !== undefined && {
       forwardedProps: options.forwardedProps,
     }),
@@ -151,22 +150,13 @@ export function useChat<
   const pick = <TKey extends keyof typeof snapshot.value>(key: TKey) =>
     readonly(computed(() => snapshot.value[key]))
 
-  // Sync body / forwardedProps changes to the client.
-  // Both populate the same wire payload; `forwardedProps` is preferred
-  // and `body` is deprecated but still supported.
+  // Sync forwardedProps changes to the client.
   // Conditional spread: `updateOptions` declares strict-optional fields and
   // rejects explicit `undefined` under EOPT.
   watch(
-    () =>
-      [
-        options.body,
-        options.forwardedProps,
-        options.context,
-        options.queue,
-      ] as const,
-    ([newBody, newForwardedProps, newContext, newQueue]) => {
+    () => [options.forwardedProps, options.context, options.queue] as const,
+    ([newForwardedProps, newContext, newQueue]) => {
       client.updateOptions({
-        body: newBody,
         ...(newForwardedProps !== undefined && {
           forwardedProps: newForwardedProps,
         }),
@@ -266,24 +256,7 @@ export function useChat<
     await client.addToolResult(result)
   }
 
-  const addToolApprovalResponse = async (response: {
-    id: string
-    approved: boolean
-  }) => {
-    await client.addToolApprovalResponse(response)
-  }
-
-  const resumeInterrupts = async (
-    resumeItems: Array<RunAgentResumeItem>,
-    state?: ChatResumeState,
-  ) => {
-    return await client.resumeInterrupts(resumeItems, state)
-  }
-
   const interrupts = computed(() => snapshot.value.interruptState.interrupts)
-  const pendingInterrupts = computed(
-    () => snapshot.value.interruptState.interrupts,
-  )
   const interruptErrors = computed(
     () => snapshot.value.interruptState.interruptErrors,
   )
@@ -381,17 +354,14 @@ export function useChat<
     setMessages: setMessagesManually,
     clear,
     addToolResult,
-    addToolApprovalResponse,
     runId: pick('runId'),
     interrupts: readonly(interrupts),
-    pendingInterrupts: readonly(pendingInterrupts),
     interruptErrors: readonly(interruptErrors),
     resuming: readonly(resuming),
     resolveInterrupts,
     cancelInterrupts,
     retryInterrupts,
     resumeInterruptsUnsafe,
-    resumeInterrupts,
     partial: readonly(partial),
     final: readonly(final),
   } as unknown as UseChatReturn<TTools, TSchema, TInterrupts>

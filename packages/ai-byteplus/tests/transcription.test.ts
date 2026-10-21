@@ -133,7 +133,6 @@ describe('BytePlusTranscriptionAdapter', () => {
       completionTokens: 0,
       totalTokens: 0,
       billed: { quantity: 2.499, unit: 'seconds' },
-      durationSeconds: 2.499,
     })
     expect(result.id).toMatch(/^byteplus-/)
   })

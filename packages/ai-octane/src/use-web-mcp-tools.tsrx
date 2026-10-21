@@ -16,12 +16,6 @@ export type UseRegisterWebMCPToolsOptions<
   onError?: (error: unknown) => void
 }
 
-/** @deprecated Use `UseRegisterWebMCPToolsOptions`. Removed in 1.0.0. */
-export type UseWebMCPToolsOptions<
-  TTools extends ReadonlyArray<AnyClientTool>,
-  TContext = InferredClientContext<TTools>,
-> = UseRegisterWebMCPToolsOptions<TTools, TContext>
-
 type UseRegisterWebMCPToolsArguments<
   TTools extends ReadonlyArray<AnyClientTool>,
   TContext,
@@ -67,9 +61,6 @@ export function useRegisterWebMCPTools<
     return () => controller.abort()
   }, [tools, options])
 }
-
-/** @deprecated Use `useRegisterWebMCPTools`. Removed in 1.0.0. */
-export const useWebMCPTools = useRegisterWebMCPTools
 
 /** Options for {@link usePageWebMCPTools}. */
 export type UsePageWebMCPToolsOptions = Omit<

@@ -297,40 +297,6 @@ describe('connection-adapters', () => {
       expect(chunks).toHaveLength(1)
     })
 
-    it('should synthesize RUN_FINISHED on [DONE] and stop reading', async () => {
-      const mockReader = {
-        read: vi
-          .fn()
-          .mockResolvedValueOnce({
-            done: false,
-            value: new TextEncoder().encode('data: [DONE]\n\n'),
-          })
-          .mockResolvedValueOnce({ done: true, value: undefined }),
-        releaseLock: vi.fn(),
-      }
-
-      const mockResponse = {
-        ok: true,
-        body: {
-          getReader: () => mockReader,
-        },
-      }
-
-      fetchMock.mockResolvedValue(mockResponse as any)
-
-      const adapter = fetchServerSentEvents('/api/chat')
-      const chunks: Array<StreamChunk> = []
-
-      for await (const chunk of adapter.connect([
-        { role: 'user', content: 'Hello' },
-      ])) {
-        chunks.push(chunk)
-      }
-
-      expect(chunks).toHaveLength(1)
-      expect(chunks[0]!.type).toBe('RUN_FINISHED')
-    })
-
     it('should throw a SyntaxError on malformed JSON', async () => {
       const mockReader = {
         read: vi
@@ -567,35 +533,6 @@ describe('connection-adapters', () => {
       const call = fetchMock.mock.calls[0]
       const body = JSON.parse(call?.[1]?.body as string)
       expect(body.forwardedProps).toMatchObject({ key: 'value' })
-    })
-
-    it('should mirror forwardedProps under legacy `data` field for backward-compat', async () => {
-      const mockReader = {
-        read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-        releaseLock: vi.fn(),
-      }
-      const mockResponse = {
-        ok: true,
-        body: { getReader: () => mockReader },
-      }
-      fetchMock.mockResolvedValue(mockResponse as any)
-
-      const adapter = fetchServerSentEvents('/api/chat')
-
-      for await (const _ of adapter.connect(
-        [{ role: 'user', content: 'Hello' }],
-        { provider: 'openai', model: 'gpt-4o' },
-      )) {
-        // Consume
-      }
-
-      const call = fetchMock.mock.calls[0]
-      const body = JSON.parse(call?.[1]?.body as string)
-      // Legacy server code reads `body.data.X`; new server code reads
-      // `body.forwardedProps.X`. Both must contain the same content
-      // until the legacy `body` client option is removed.
-      expect(body.data).toEqual(body.forwardedProps)
-      expect(body.data).toMatchObject({ provider: 'openai', model: 'gpt-4o' })
     })
 
     it('should use custom fetchClient when provided', async () => {

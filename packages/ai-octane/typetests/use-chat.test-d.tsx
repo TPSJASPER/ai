@@ -88,7 +88,6 @@ describe('useChat() return type', () => {
       expectTypeOf<R['resolveInterrupts']>().toBeFunction()
       expectTypeOf<R['cancelInterrupts']>().toBeFunction()
       expectTypeOf<R['retryInterrupts']>().toBeFunction()
-      expectTypeOf<R['resumeInterrupts']>().toBeFunction()
       expectTypeOf<R['resumeInterruptsUnsafe']>().toBeFunction()
       expectTypeOf<R['sendMessage']>().toMatchTypeOf<
         (content: string, options?: SendMessageOptions) => Promise<void>

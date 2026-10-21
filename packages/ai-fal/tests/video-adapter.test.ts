@@ -536,7 +536,6 @@ describe('Fal Video Adapter', () => {
         completionTokens: 0,
         totalTokens: 0,
         billed: { quantity: 12, unit: 'units' },
-        unitsBilled: 12,
       })
     })
 

@@ -16,12 +16,6 @@ export type CreateRegisterWebMCPToolsOptions<
   onError?: (error: unknown) => void
 }
 
-/** @deprecated Use `CreateRegisterWebMCPToolsOptions`. Removed in 1.0.0. */
-export type CreateWebMCPToolsOptions<
-  TTools extends ReadonlyArray<AnyClientTool>,
-  TContext = InferredClientContext<TTools>,
-> = CreateRegisterWebMCPToolsOptions<TTools, TContext>
-
 type CreateRegisterWebMCPToolsArguments<
   TTools extends ReadonlyArray<AnyClientTool>,
   TContext,
@@ -64,12 +58,6 @@ export function createRegisterWebMCPTools<
     }
   })
 }
-
-/**
- * @deprecated Use `createRegisterWebMCPTools`. Removed in 1.0.0.
- * @alias
- */
-export const createWebMCPTools = createRegisterWebMCPTools
 
 /** Options for {@link createPageWebMCPTools}. */
 export type CreatePageWebMCPToolsOptions = Omit<

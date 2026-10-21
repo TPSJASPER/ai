@@ -380,7 +380,6 @@ describe('Fal Image Adapter', () => {
       completionTokens: 0,
       totalTokens: 0,
       billed: { quantity: 4, unit: 'units' },
-      unitsBilled: 4,
     })
   })
 

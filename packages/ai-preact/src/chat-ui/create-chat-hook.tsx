@@ -17,7 +17,6 @@ type ChatInstanceOverrides<TOptions> = {
   threadId?: string
   live?: boolean
   forwardedProps?: Record<string, any>
-  body?: Record<string, any>
   initialMessages?: HeadlessOptions<TOptions>['initialMessages']
 }
 

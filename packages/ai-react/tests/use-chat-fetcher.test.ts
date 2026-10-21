@@ -95,7 +95,7 @@ describe('useChat — fetcher transport', () => {
     })
 
     const { result } = renderHook(() =>
-      useChat({ fetcher, body: { provider: 'openai' } }),
+      useChat({ fetcher, forwardedProps: { provider: 'openai' } }),
     )
 
     await result.current.sendMessage('hello')
