@@ -874,6 +874,12 @@ export type ToolExecutionContext<TContext = unknown> =
     /** The ID of the tool call being executed */
     toolCallId?: string
     /**
+     * The thread id of the chat run. `chat()` sets it to the same value as
+     * `ctx.threadId` in middleware. A tool can use it to keep its own state
+     * for each conversation.
+     */
+    threadId?: string
+    /**
      * Abort signal for the current chat run. Aborts when the run's
      * `abortController` fires (or middleware aborts). Long-running tools —
      * e.g. MCP `callTool` — should forward this to cancel in-flight work.
@@ -902,11 +908,9 @@ export type ToolExecutionContext<TContext = unknown> =
      */
     detach?: (work: Promise<unknown>) => Promise<string>
     /**
-     * The thread of the call, when a host knows it. `chat()` does not set it:
+     * The run of the call, when a host knows it. `chat()` does not set it:
      * a host such as the harness wraps the tool's `execute` to add it.
      */
-    threadId?: string
-    /** The run of the call, when a host knows it. Set as `threadId` is. */
     runId?: string
     /**
      * Emit a custom event during tool execution.
