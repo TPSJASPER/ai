@@ -11,6 +11,7 @@ import {
   listSavedPermissions,
   permissions,
 } from '../src/first-party/permissions'
+import { createSessionView } from '../src/view'
 import { gate, mockAdapter, questionsOf, text, toolCall } from './helpers'
 import type { MetadataStore } from '@tanstack/ai-persistence'
 import type {
@@ -1111,4 +1112,100 @@ describe('permissions() at the turn boundary', () => {
     expect(seen).toContain('The user denied this tool call.')
     await host.close()
   })
+})
+
+/**
+ * A session with `permissions()` and a view on it. The model reads `.env`
+ * once, which asks, so the view shows one approval. `answered` waits for
+ * the turn that the answer resumes, and returns the errors the view showed.
+ */
+async function approvalInView() {
+  const persistence = memoryPersistence()
+  const tools = fakeTools()
+  const { host, session, calls } = await open(
+    persistence,
+    [permissions({ root: ROOT }), tools.plugin],
+    [() => toolCall('read_file', { path: '.env' }, 'c1')],
+  )
+  const view = createSessionView(session)
+  const errors: Array<string> = []
+  const ends: Array<string> = []
+  view.on('error', (message) => errors.push(message))
+  view.on('turnEnd', ({ operationId }) => ends.push(operationId))
+  await view.ready
+  await view.send('read it')
+  await waitFor(() => expect(view.store.get().approvals).toHaveLength(1))
+  const [approval] = view.store.get().approvals
+  if (!approval) throw new Error('No approval.')
+  return {
+    approval,
+    calls,
+    ran: tools.ran,
+    answered: async () => {
+      await waitFor(() =>
+        expect(ends.length + errors.length).toBeGreaterThan(0),
+      )
+      return errors
+    },
+    saved: () =>
+      persistence.stores.metadata.get(
+        'tanstack/permissions',
+        'permissions:saved::/work/repo',
+      ),
+    close: async () => {
+      view.dispose()
+      await host.close()
+    },
+  }
+}
+
+describe('permissions() answered from a session view', () => {
+  it.each(['always', { answer: 'always' }])(
+    'runs the call and saves the rule for approve({ payload: %j })',
+    async (payload) => {
+      const { approval, answered, ran, saved, close } = await approvalInView()
+
+      approval.approve({ payload })
+
+      expect(await answered()).toEqual([])
+      expect(ran).toEqual(['read_file'])
+      expect(await saved()).toEqual([
+        { tool: 'read_file', resource: '.env', decision: 'allow' },
+      ])
+      await close()
+    },
+  )
+
+  it('rejects approve({ editedArgs }) and tells the model why', async () => {
+    const { approval, answered, ran, calls, saved, close } =
+      await approvalInView()
+
+    // The core does not apply edited arguments to this approval. The call of
+    // the model is not what the user approved, so nothing runs.
+    approval.approve({ editedArgs: { path: 'README.md' } })
+
+    expect(await answered()).toEqual([])
+    expect(ran).toEqual([])
+    expect(await saved()).toBeNull()
+    expect(JSON.stringify(calls[1]?.messages)).toContain(
+      'this approval cannot run a changed call',
+    )
+    await close()
+  })
+
+  it.each(['use pnpm', { message: 'use pnpm' }])(
+    'gives the model the message of reject({ payload: %j })',
+    async (payload) => {
+      const { approval, answered, ran, calls, close } = await approvalInView()
+
+      approval.reject({ payload })
+
+      expect(await answered()).toEqual([])
+      expect(ran).toEqual([])
+      expect(JSON.stringify(calls[1]?.messages)).toContain(
+        '{\\"error\\":\\"use pnpm\\"}',
+      )
+      await close()
+    },
+  )
 })
