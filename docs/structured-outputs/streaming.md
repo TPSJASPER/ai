@@ -103,7 +103,14 @@ Vue, Solid, Svelte, Angular, Preact, and Octane take the same `outputSchema` opt
 
 ```tsx
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
-import { PersonSchema } from "./schemas/person";
+import { z } from "zod";
+
+// The same schema as schemas/person.ts. In your app, import it from that file.
+const PersonSchema = z.object({
+  name: z.string().meta({ description: "The full name of the person" }),
+  age: z.number().meta({ description: "The age in years" }),
+  email: z.string().email(),
+});
 
 export function PersonRun() {
   const { messages, sendMessage } = useChat({

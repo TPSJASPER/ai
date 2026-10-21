@@ -90,7 +90,21 @@ Create the implementation at module scope. Then add it to `tools`:
 // app/chat.tsx
 import { useState } from "react";
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
-import { savePreferenceDef } from "../tools/definitions";
+import { toolDefinition } from "@tanstack/ai";
+import { z } from "zod";
+
+// The same definition as tools/definitions.ts. In your app, import it from that file.
+const savePreferenceDef = toolDefinition({
+  name: "save_preference",
+  description: "Save a user preference in the browser, such as the color theme",
+  inputSchema: z.object({
+    key: z.string().meta({ description: "Preference name, for example theme" }),
+    value: z.string().meta({ description: "Preference value, for example dark" }),
+  }),
+  outputSchema: z.object({
+    saved: z.boolean(),
+  }),
+});
 
 const savePreference = savePreferenceDef.client((input) => {
   localStorage.setItem(input.key, input.value);
@@ -182,7 +196,21 @@ Each tool call is a `tool-call` part in the assistant message. When you pass the
 ```tsx
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
 import { createChatClientOptions, type InferChatMessages } from "@tanstack/ai-client";
-import { savePreferenceDef } from "../tools/definitions";
+import { toolDefinition } from "@tanstack/ai";
+import { z } from "zod";
+
+// The same definition as tools/definitions.ts. In your app, import it from that file.
+const savePreferenceDef = toolDefinition({
+  name: "save_preference",
+  description: "Save a user preference in the browser, such as the color theme",
+  inputSchema: z.object({
+    key: z.string().meta({ description: "Preference name, for example theme" }),
+    value: z.string().meta({ description: "Preference value, for example dark" }),
+  }),
+  outputSchema: z.object({
+    saved: z.boolean(),
+  }),
+});
 
 const savePreference = savePreferenceDef.client((input) => {
   localStorage.setItem(input.key, input.value);

@@ -78,7 +78,18 @@ export async function POST(request: Request) {
 ```tsx
 import { useState } from "react";
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
-import { RecipeSchema } from "./schemas/recipe";
+import { z } from "zod";
+
+// The same schema as schemas/recipe.ts. In your app, import it from that file.
+const RecipeSchema = z.object({
+  title: z.string(),
+  cuisine: z.string(),
+  servings: z.number(),
+  estimatedCostUsd: z.number(),
+  ingredients: z.array(z.object({ item: z.string(), amount: z.string() })),
+  steps: z.array(z.string()),
+  tips: z.array(z.string()),
+});
 
 export function RecipeChat() {
   const [input, setInput] = useState("");

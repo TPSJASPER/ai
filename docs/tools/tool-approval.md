@@ -53,9 +53,25 @@ import {
   chat,
   chatParamsFromRequest,
   toServerSentEventsResponse,
+  toolDefinition,
 } from '@tanstack/ai'
 import { openaiText } from '@tanstack/ai-openai'
-import { sendEmailDef } from '../tools/definitions'
+import { z } from 'zod'
+
+// The same definition as tools/definitions.ts. In your app, import it from that file.
+const sendEmailDef = toolDefinition({
+  name: 'send_email',
+  description: 'Send an email to a recipient',
+  inputSchema: z.object({
+    to: z.string(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  outputSchema: z.object({
+    sent: z.boolean(),
+  }),
+  needsApproval: true,
+})
 
 const sendEmail = sendEmailDef.server(async ({ to, subject }) => {
   // This runs only after the user approves. Call your email service here.

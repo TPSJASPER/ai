@@ -89,10 +89,27 @@ Set `whenBusy` in the `queue` option. A string is a short form of `{ whenBusy }`
 Pass options as the second argument to `sendMessage`:
 
 ```tsx
-sendMessage("Never mind, do this instead", {
-  whenBusy: "interrupt",
-  body: { source: "composer" },
-});
+import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
+
+export function InterruptButton() {
+  const { sendMessage } = useChat({
+    connection: fetchServerSentEvents("/api/chat"),
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        sendMessage("Never mind, do this instead", {
+          whenBusy: "interrupt",
+          body: { source: "composer" },
+        })
+      }
+    >
+      Do this instead
+    </button>
+  );
+}
 ```
 
 `body` is extra JSON for this one request. The client merges it into `forwardedProps`.

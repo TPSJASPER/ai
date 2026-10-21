@@ -80,9 +80,7 @@ for await (const chunk of stream) {
     process.stdout.write(chunk.delta)
   }
   if (chunk.type === 'CUSTOM' && chunk.name === 'file.changed') {
-    console.log('
---- diff ---
-')
+    console.log('\n--- diff ---\n')
     console.log(chunk.value.diff)
   }
 }

@@ -203,8 +203,11 @@ Two rules matter in production:
 
 To allow ten quiet minutes, add one line next to `adapter` in `src/agent.ts`:
 
-```ts
-stallTimeoutMs: 10 * 60_000,
+```diff
+ export const agent = createCloudflareSandboxAgent<AppEnv>({
+   adapter: () => claudeCodeText('claude-opus-4-8'),
++  stallTimeoutMs: 10 * 60_000,
+   sandbox: (_input, env) =>
 ```
 
 How it decides:

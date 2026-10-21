@@ -66,7 +66,7 @@ export function Chat() {
         if (part.type === "thinking") {
           return (
             <details key={index}>
-              <summary>{part.redacted ? "Thinking hidden" : "Thinking..."}</summary>
+              <summary>Thinking...</summary>
               <pre style={{ whiteSpace: "pre-wrap" }}>{part.content}</pre>
             </details>
           );
@@ -137,6 +137,8 @@ What this means for your UI:
 
 ### The `ThinkingPart` type
 
+This is the type in `@tanstack/ai`, which the server and stored messages use. The thinking part that `useChat` returns has only `type` and `content`.
+
 ```typescript
 interface ThinkingPart {
   type: "thinking";
@@ -165,7 +167,7 @@ Claude can send a redacted thinking block. It is encrypted, so it has no text. I
 - an empty `content`
 - the encrypted data in `signature`
 
-Keep the part in your stored messages. The next request sends it back to Claude unchanged. In a UI, show a short label such as "Thinking hidden" in place of the empty text.
+Keep the part in your stored messages. The next request sends it back to Claude unchanged. In a UI, the part from `useChat` has an empty `content`. Show a short label such as "Thinking hidden" in place of the empty text.
 
 ### The block order goes back to the model
 

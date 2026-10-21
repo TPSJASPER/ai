@@ -142,7 +142,7 @@ The runtime connects the two. The chunks that arrive between `send()` and the ne
 
 If `webSocket()` does not fit (a different wire format, no need for resume, or a server that you do not control), write the adapter yourself:
 
-```typescript
+```tsx
 import { useChat, type SubscribeConnectionAdapter } from "@tanstack/ai-react";
 import type { StreamChunk } from "@tanstack/ai";
 

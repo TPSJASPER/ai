@@ -31,7 +31,7 @@ import { anthropicFiles } from "@tanstack/ai-anthropic";
 
 export async function POST(request: Request) {
   const form = await request.formData();
-  const file = form.get("file");
+  const [file] = form.getAll("file");
   if (!(file instanceof Blob)) {
     return new Response("Missing file", { status: 400 });
   }

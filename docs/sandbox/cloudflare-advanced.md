@@ -121,7 +121,7 @@ vanilla: @cloudflare/sandbox
 
 2. Add a provider that names the container.
 
-```ts
+```ts ignore
 // src/sandbox-provider.ts
 import { getSandbox } from '@cloudflare/sandbox'
 import {

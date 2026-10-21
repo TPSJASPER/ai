@@ -23,7 +23,7 @@ New to tools? Read [Server Tools](../tools/server-tools) first.
 
 ### 1. Define the tool and the schema
 
-```typescript
+```typescript group=with-tools
 // recommend.ts
 import { chat, toolDefinition } from "@tanstack/ai";
 import { openaiText } from "@tanstack/ai-openai";
@@ -49,7 +49,7 @@ const RecommendationSchema = z.object({
 
 Add this to the same file:
 
-```typescript
+```typescript group=with-tools
 const recommendation = await chat({
   adapter: openaiText("gpt-6.1-sol"),
   messages: [{ role: "user", content: "Recommend a product for a developer" }],
@@ -113,9 +113,24 @@ import {
   chat,
   chatParamsFromRequest,
   toServerSentEventsResponse,
+  toolDefinition,
 } from "@tanstack/ai";
 import { openaiText } from "@tanstack/ai-openai";
-import { ReportSchema, sendEmailDef } from "../tools/definitions";
+import { z } from "zod";
+
+// The same definitions as tools/definitions.ts. In your app, import them from that file.
+const sendEmailDef = toolDefinition({
+  name: "send_email",
+  description: "Send an email to a recipient",
+  inputSchema: z.object({ to: z.string(), subject: z.string() }),
+  outputSchema: z.object({ sent: z.boolean() }),
+  needsApproval: true,
+});
+
+const ReportSchema = z.object({
+  summary: z.string(),
+  emailSent: z.boolean(),
+});
 
 const sendEmail = sendEmailDef.server(async ({ to, subject }) => {
   console.log(`Sending "${subject}" to ${to}`);
@@ -146,7 +161,22 @@ On the client, show each pending approval from `interrupts`:
 ```tsx
 // app/report.tsx
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
-import { ReportSchema, sendEmailDef } from "../tools/definitions";
+import { toolDefinition } from "@tanstack/ai";
+import { z } from "zod";
+
+// The same definitions as tools/definitions.ts. In your app, import them from that file.
+const sendEmailDef = toolDefinition({
+  name: "send_email",
+  description: "Send an email to a recipient",
+  inputSchema: z.object({ to: z.string(), subject: z.string() }),
+  outputSchema: z.object({ sent: z.boolean() }),
+  needsApproval: true,
+});
+
+const ReportSchema = z.object({
+  summary: z.string(),
+  emailSent: z.boolean(),
+});
 
 export function Report() {
   const { sendMessage, interrupts, resuming, partial, final } = useChat({

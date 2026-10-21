@@ -98,7 +98,16 @@ export async function POST(request: Request) {
 
 ```tsx
 import { useChat, fetchServerSentEvents } from "@tanstack/ai-react";
-import { ReportSchema } from "./schemas/report";
+import { z } from "zod";
+
+// The same schema as schemas/report.ts. In your app, import it from that file.
+const ReportSchema = z.object({
+  name: z.string(),
+  oneLiner: z.string(),
+  audience: z.string(),
+  mainPackages: z.array(z.object({ name: z.string(), role: z.string() })),
+  howToRun: z.string(),
+});
 
 export function RepoReport() {
   const { messages, sendMessage, isLoading, final } = useChat({
