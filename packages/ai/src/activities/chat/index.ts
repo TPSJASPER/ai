@@ -1012,6 +1012,15 @@ class TextEngine<
 
   private messages: Array<ModelMessage>
   private activities: Array<ActivityRecord> = []
+  /**
+   * Activity chunks already applied to `activities`. Adapter chunks are
+   * handled before middleware runs, and middleware pass-through returns the
+   * same object. Remembering the applied objects keeps an `ACTIVITY_DELTA`
+   * from being applied twice when the chunk reaches the public stream.
+   * The content keys also catch middleware that applies a copy.
+   */
+  private readonly appliedActivityChunks = new WeakSet<StreamChunk>()
+  private readonly appliedActivityKeys = new Set<string>()
   private providerMessages: Array<ModelMessage>
   private iterationCount = 0
   /** Cumulative tool calls counted in this run (emitted + pending resume). */
@@ -2080,6 +2089,7 @@ class TextEngine<
         this.finalStructuredOutput.yieldChunks &&
         this.finalStructuredOutput.nativeCombined !== true
       for (const outputChunk of outputChunks) {
+        this.recordPublicActivity(outputChunk)
         for (const spec of normalizeStreamChunk(
           outputChunk as AdapterYieldChunk,
         )) {
@@ -2187,6 +2197,8 @@ class TextEngine<
         break
 
       case 'ACTIVITY_SNAPSHOT':
+        if (this.isActivityApplied(chunk)) break
+        this.markActivityApplied(chunk)
         this.setActivities(
           applyActivitySnapshotToRecords(
             this.activities,
@@ -2200,6 +2212,8 @@ class TextEngine<
         break
 
       case 'ACTIVITY_DELTA':
+        if (this.isActivityApplied(chunk)) break
+        this.markActivityApplied(chunk)
         this.setActivities(
           applyActivityDeltaToRecords(
             this.activities,
@@ -2215,9 +2229,53 @@ class TextEngine<
     }
   }
 
+  private activityChunkKey(chunk: AdapterYieldChunk): string | undefined {
+    try {
+      if (chunk.type === EventType.ACTIVITY_SNAPSHOT) {
+        return `snapshot:${chunk.messageId}:${chunk.timestamp}:${JSON.stringify(chunk.content)}`
+      }
+      if (chunk.type === EventType.ACTIVITY_DELTA) {
+        return `delta:${chunk.messageId}:${chunk.timestamp}:${JSON.stringify(chunk.patch)}`
+      }
+    } catch {
+      // Non-serializable content falls back to object identity.
+    }
+    return undefined
+  }
+
+  private isActivityApplied(chunk: AdapterYieldChunk): boolean {
+    if (this.appliedActivityChunks.has(chunk)) return true
+    const key = this.activityChunkKey(chunk)
+    return key !== undefined && this.appliedActivityKeys.has(key)
+  }
+
+  private markActivityApplied(chunk: AdapterYieldChunk): void {
+    this.appliedActivityChunks.add(chunk)
+    const key = this.activityChunkKey(chunk)
+    if (key !== undefined) this.appliedActivityKeys.add(key)
+  }
+
   private setActivities(activities: Array<ActivityRecord>): void {
     this.activities = activities
     this.middlewareCtx.activities = this.activities
+  }
+
+  /**
+   * Apply an activity event that is about to enter the public stream.
+   *
+   * Adapter chunks are applied before middleware runs so middleware sees
+   * fresh `ctx.activities`. Middleware can add new activity events, though,
+   * and those only exist on the public stream. Apply them here as well;
+   * `handleStreamChunk` ignores a chunk object it has already applied, so a
+   * pass-through adapter `ACTIVITY_DELTA` is not applied twice.
+   */
+  private recordPublicActivity(chunk: StreamChunk): void {
+    if (
+      chunk.type === EventType.ACTIVITY_SNAPSHOT ||
+      chunk.type === EventType.ACTIVITY_DELTA
+    ) {
+      this.handleStreamChunk(chunk as AdapterYieldChunk)
+    }
   }
 
   /**
@@ -5614,6 +5672,7 @@ class TextEngine<
     outputs: Array<StreamChunk>,
   ): Generator<StreamChunk, void, void> {
     for (const output of outputs) {
+      this.recordPublicActivity(output)
       for (const spec of normalizeStreamChunk(output as AdapterYieldChunk)) {
         restorePublicUsage(spec)
         if (spec.type === EventType.RUN_STARTED) {
