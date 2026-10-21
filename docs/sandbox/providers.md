@@ -25,7 +25,7 @@ completed workspace data in your application persistence for reconstruction.
 | Provider | Package | Isolation | Notes |
 | --- | --- | --- | --- |
 | Local process | `@tanstack/ai-sandbox-local-process` | none (host) | The fast, no-Docker dev loop. Trusted/dev use only. |
-| Docker | `@tanstack/ai-sandbox-docker` | container | Real isolation; commit-based snapshots, fork, resume-by-id. |
+| Docker | `@tanstack/ai-sandbox-docker` | container | Real isolation; commit-based snapshots, fork, resume-by-id. `localSource()` copies a local git repository into the container. |
 | Docker Sandboxes (`sbx`) | `@tanstack/ai-sandbox-docker` | microVM | Native Docker Sandboxes. Same package as `dockerSandbox()`, different export: `sbxSandbox()`. Needs the `sbx` CLI, a login, and a hypervisor. |
 | Daytona | `@tanstack/ai-sandbox-daytona` | cloud sandbox | Managed [Daytona](https://www.daytona.io/) sandboxes; snapshots after setup, port preview links, resume-by-id. Needs `DAYTONA_API_KEY`. |
 | Vercel | `@tanstack/ai-sandbox-vercel` | microVM | Managed [Vercel Sandbox](https://vercel.com/docs/sandbox) microVMs; exposed-port domains, resume-by-id (persistent). Needs `VERCEL_TOKEN` + team/project. |
@@ -171,6 +171,7 @@ const isolated = dockerSandbox({ image: 'node:22' })
 ```
 
 - **Isolation:** a real container boundary between the agent and your host.
+- **Workspace:** when `workspace.source` is `localSource(dir)`, `create()` copies the folder into `workdir` (`/workspace` by default). The copy has every file that git does not ignore, with its uncommitted changes, and the history of the current branch. The folder must be a git repository root (not a shallow clone), and the host and the image need `git`. Fork, restore, and resume do not copy the folder again. See [Copy your project into the container](../harness/coding-tools-backends#copy-your-project-into-the-container).
 - **Auth / env:** no host login; provide credentials as workspace secrets, which
   are injected into the container env at create/resume. The agent reaches host
   tools over `host.docker.internal` (see [tools](./tools)).
