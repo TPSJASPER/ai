@@ -13,13 +13,13 @@
           "label": "Overview",
           "to": "getting-started/overview",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-09-29"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Quick Start",
           "to": "getting-started/quick-start",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-09-17"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Quick Start: React Native",
@@ -85,6 +85,11 @@
           "label": "Build an MCP Server",
           "to": "tutorials/mcp-server",
           "addedAt": "2026-09-22"
+        },
+        {
+          "label": "Computer Use",
+          "to": "tutorials/computer-use",
+          "addedAt": "2026-10-21"
         }
       ]
     },
@@ -126,6 +131,11 @@
           "label": "MCP Server",
           "to": "framework/react/examples/mcp-server",
           "addedAt": "2026-09-22"
+        },
+        {
+          "label": "Computer Use",
+          "to": "framework/react/examples/computer-use",
+          "addedAt": "2026-10-21"
         }
       ]
     },
@@ -323,7 +333,7 @@
           "label": "Provider Tools",
           "to": "tools/provider-tools",
           "addedAt": "2026-04-21",
-          "updatedAt": "2026-09-24"
+          "updatedAt": "2026-10-20"
         },
         {
           "label": "Provider Skills",
@@ -1057,7 +1067,7 @@
           "label": "Write a plugin",
           "to": "harness/plugins",
           "addedAt": "2026-10-13",
-          "updatedAt": "2026-10-20"
+          "updatedAt": "2026-10-21"
         },
         {
           "label": "Track usage and cost",
@@ -1174,6 +1184,11 @@
           "updatedAt": "2026-10-20"
         },
         {
+          "label": "Give your agent a computer",
+          "to": "harness/computer-use",
+          "addedAt": "2026-10-21"
+        },
+        {
           "label": "Use from any MCP client",
           "to": "harness/mcp-server",
           "addedAt": "2026-10-13",
@@ -1186,6 +1201,34 @@
           "updatedAt": "2026-10-18"
         }
       ]
+    },
+    {
+      "label": "Computer Use",
+      "children": [
+        {
+          "label": "Computer Use",
+          "to": "computer-use/computer-use",
+          "addedAt": "2026-10-20",
+          "updatedAt": "2026-10-21"
+        },
+        {
+          "label": "Drivers",
+          "to": "computer-use/drivers",
+          "addedAt": "2026-10-20",
+          "updatedAt": "2026-10-21"
+        },
+        {
+          "label": "Safety Checks",
+          "to": "computer-use/safety-checks",
+          "addedAt": "2026-10-20"
+        },
+        {
+          "label": "Custom Driver",
+          "to": "computer-use/custom-driver",
+          "addedAt": "2026-10-20"
+        }
+      ],
+      "tab": "guides"
     },
     {
       "label": "Sandboxes",
@@ -1484,13 +1527,13 @@
           "label": "OpenAI",
           "to": "adapters/openai",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-12"
+          "updatedAt": "2026-10-20"
         },
         {
           "label": "Anthropic",
           "to": "adapters/anthropic",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-09"
+          "updatedAt": "2026-10-20"
         },
         {
           "label": "Google Gemini",
@@ -1754,7 +1797,7 @@
           "label": "@tanstack/ai",
           "to": "api/ai",
           "addedAt": "2026-04-15",
-          "updatedAt": "2026-10-17"
+          "updatedAt": "2026-10-20"
         },
         {
           "label": "@tanstack/ai-client",
