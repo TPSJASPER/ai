@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { toolDefinition } from '@tanstack/ai'
 import { memoryPersistence } from '@tanstack/ai-persistence'
 import { createHarnessHost, defineHarness, definePlugin } from '../src'
+import { APPROVAL_ANSWER_SCHEMA } from '../src/boundary-waits'
 import {
+  PermissionCallCapability,
   PermissionDecisionCapability,
   PermissionResources,
   PermissionRules,
@@ -22,6 +24,7 @@ import type {
 } from '../src'
 import type {
   CallResources,
+  PermissionCallDecision,
   PermissionDecision,
   PermissionMode,
   PermissionRule,
@@ -1208,4 +1211,169 @@ describe('permissions() answered from a session view', () => {
       await close()
     },
   )
+})
+
+/** A write that asks in the default mode. */
+const WRITE = { path: 'src/a.ts', content: 'x' }
+
+/**
+ * A session with `permissions()` and a plugin that reads
+ * `PermissionCallCapability`, like `codeMode()` does. The plugin adds
+ * `write_file`: an edit that asks, and touches its `path`. `decide` decides
+ * one call, and `askWrite` decides `WRITE`, which asks.
+ */
+async function callDecisions(rules: Array<PermissionRule> = []) {
+  const persistence = memoryPersistence()
+  let capability:
+    | ((call: {
+        tool: string
+        args: unknown
+      }) => Promise<PermissionCallDecision>)
+    | undefined
+  const writer = definePlugin({
+    name: 'test/writer',
+    optionalRequires: [PermissionCallCapability],
+    setup: (ctx) => {
+      capability = ctx.getOptional(PermissionCallCapability)
+      return {
+        contribute: [
+          PermissionRules.item({
+            tool: 'write_file',
+            decision: 'ask',
+            kind: 'edit',
+          }),
+          PermissionResources.item({
+            write_file: { paths: (input) => [field(input, 'path')] },
+          }),
+        ],
+      }
+    },
+  })
+  const { host, session } = await open(
+    persistence,
+    [permissions({ root: ROOT, rules }), fakeTools().plugin, writer],
+    [],
+  )
+  const decide = (tool: string, args: unknown) => {
+    if (!capability) throw new Error('No PermissionCallCapability.')
+    return capability({ tool, args })
+  }
+  return {
+    host,
+    session,
+    decide,
+    saved: () => listSavedPermissions(persistence.stores, ROOT),
+    askWrite: async () => {
+      const call = await decide('write_file', WRITE)
+      if (call.decision !== 'ask') {
+        throw new Error(`The write did not ask: ${call.decision}.`)
+      }
+      return call
+    },
+  }
+}
+
+describe('PermissionCallCapability', () => {
+  it('allows a read inside the root, and asks for a read outside it', async () => {
+    const { decide, host } = await callDecisions()
+
+    expect(await decide('read_file', { path: 'src/a.ts' })).toEqual({
+      decision: 'allow',
+    })
+    expect(await decide('read_file', { path: '../a.txt' })).toMatchObject({
+      decision: 'ask',
+    })
+    await host.close()
+  })
+
+  it.each([
+    [
+      'a write in plan mode',
+      'plan',
+      'write_file',
+      WRITE,
+      'This tool is not allowed in plan mode.',
+    ],
+    [
+      'a read that a rule denies',
+      'default',
+      'read_file',
+      { path: 'secrets/key' },
+      'A permission rule denies this tool.',
+    ],
+    [
+      'a call whose resources cannot be read',
+      'default',
+      'read_file',
+      {},
+      'Cannot check the permissions of this call: No path.',
+    ],
+  ] as const)(
+    'denies %s, with the error that a direct call gets',
+    async (_name, mode, tool, args, error) => {
+      const { decide, session, host } = await callDecisions([
+        { tool: 'read_file', resource: 'secrets/**', decision: 'deny' },
+      ])
+      await session.runCommand({ name: 'mode', input: mode })
+
+      expect(await decide(tool, args)).toEqual({ decision: 'deny', error })
+      await host.close()
+    },
+  )
+
+  it('asks for a write in the default mode, with the question and the answer shape of a direct approval', async () => {
+    const { askWrite, host } = await callDecisions()
+
+    const call = await askWrite()
+
+    expect(call.message).toBe(
+      'Allow write_file {"path":"src/a.ts","content":"x"}? Answer once, always, or reject.',
+    )
+    expect(call.schema).toBe(APPROVAL_ANSWER_SCHEMA)
+    await host.close()
+  })
+
+  it('settles once: the call can run, and nothing is saved', async () => {
+    const { askWrite, decide, saved, host } = await callDecisions()
+    const call = await askWrite()
+
+    expect(await call.settle({ answer: 'once' })).toBeUndefined()
+
+    expect(await saved()).toEqual([])
+    expect(await decide('write_file', WRITE)).toMatchObject({ decision: 'ask' })
+    await host.close()
+  })
+
+  it('settles always: the call can run, and the saved rule allows the same call next time', async () => {
+    const { askWrite, decide, saved, host } = await callDecisions()
+    const call = await askWrite()
+
+    expect(await call.settle('always')).toBeUndefined()
+
+    expect(await saved()).toEqual([
+      { tool: 'write_file', resource: 'src/a.ts', decision: 'allow' },
+    ])
+    expect(await decide('write_file', WRITE)).toEqual({ decision: 'allow' })
+    await host.close()
+  })
+
+  it('settles a reject from a session view with the message of the user', async () => {
+    const { askWrite, host } = await callDecisions()
+    const call = await askWrite()
+
+    expect(await call.settle({ approved: false, payload: 'use pnpm' })).toBe(
+      'use pnpm',
+    )
+    await host.close()
+  })
+
+  it('allows every call in bypass mode', async () => {
+    const { decide, session, host } = await callDecisions()
+    await session.runCommand({ name: 'mode', input: 'bypass' })
+
+    expect(
+      await decide('write_file', { path: '../a.ts', content: 'x' }),
+    ).toEqual({ decision: 'allow' })
+    await host.close()
+  })
 })
