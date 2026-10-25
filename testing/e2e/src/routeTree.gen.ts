@@ -149,6 +149,7 @@ import { Route as ApiMoonshotUsageDetailsRouteImport } from './routes/api.moonsh
 import { Route as ApiMultimodalToolResultWireRouteImport } from './routes/api.multimodal-tool-result-wire'
 import { Route as ApiNeonWireRouteImport } from './routes/api.neon-wire'
 import { Route as ApiNonStreamingRunErrorRouteImport } from './routes/api.non-streaming-run-error'
+import { Route as ApiOllamaFinishReasonRouteImport } from './routes/api.ollama-finish-reason'
 import { Route as ApiOpenaiCompletedResponseTextRouteImport } from './routes/api.openai-completed-response-text'
 import { Route as ApiOpenaiComputerUseWireRouteImport } from './routes/api.openai-computer-use-wire'
 import { Route as ApiOpenaiImage25ModelsRouteImport } from './routes/api.openai-image-2-5-models'
@@ -200,10 +201,10 @@ import { Route as ApiWebMcpPageToolsRouteImport } from './routes/api.web-mcp-pag
 import { Route as ApiWorldRouteImport } from './routes/api.world'
 import { Route as ApiWrapFetchWireRouteImport } from './routes/api.wrap-fetch-wire'
 import { Route as ApiAudioStreamRouteImport } from './routes/api.audio.stream'
-import { Route as ApiHarnessProtocolSplatRouteImport } from './routes/api.harness-protocol.$'
-import { Route as ApiHarnessSecretAnswerSplatRouteImport } from './routes/api.harness-secret-answer.$'
 import { Route as ApiHarnessHandoffSplatRouteImport } from './routes/api.harness-handoff.$'
 import { Route as ApiHarnessObservabilitySplatRouteImport } from './routes/api.harness-observability.$'
+import { Route as ApiHarnessProtocolSplatRouteImport } from './routes/api.harness-protocol.$'
+import { Route as ApiHarnessSecretAnswerSplatRouteImport } from './routes/api.harness-secret-answer.$'
 import { Route as ApiHarnessWaitsSplatRouteImport } from './routes/api.harness-waits.$'
 import { Route as ApiImageStreamRouteImport } from './routes/api.image.stream'
 import { Route as ApiTranscriptionStreamRouteImport } from './routes/api.transcription.stream'
@@ -938,6 +939,11 @@ const ApiNonStreamingRunErrorRoute = ApiNonStreamingRunErrorRouteImport.update({
   path: '/api/non-streaming-run-error',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOllamaFinishReasonRoute = ApiOllamaFinishReasonRouteImport.update({
+  id: '/api/ollama-finish-reason',
+  path: '/api/ollama-finish-reason',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOpenaiCompletedResponseTextRoute =
   ApiOpenaiCompletedResponseTextRouteImport.update({
     id: '/api/openai-completed-response-text',
@@ -1212,17 +1218,6 @@ const ApiAudioStreamRoute = ApiAudioStreamRouteImport.update({
   path: '/stream',
   getParentRoute: () => ApiAudioRoute,
 } as any)
-const ApiHarnessProtocolSplatRoute = ApiHarnessProtocolSplatRouteImport.update({
-  id: '/api/harness-protocol/$',
-  path: '/api/harness-protocol/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiHarnessSecretAnswerSplatRoute =
-  ApiHarnessSecretAnswerSplatRouteImport.update({
-    id: '/api/harness-secret-answer/$',
-    path: '/api/harness-secret-answer/$',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ApiHarnessHandoffSplatRoute = ApiHarnessHandoffSplatRouteImport.update({
   id: '/api/harness-handoff/$',
   path: '/api/harness-handoff/$',
@@ -1232,6 +1227,17 @@ const ApiHarnessObservabilitySplatRoute =
   ApiHarnessObservabilitySplatRouteImport.update({
     id: '/api/harness-observability/$',
     path: '/api/harness-observability/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiHarnessProtocolSplatRoute = ApiHarnessProtocolSplatRouteImport.update({
+  id: '/api/harness-protocol/$',
+  path: '/api/harness-protocol/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHarnessSecretAnswerSplatRoute =
+  ApiHarnessSecretAnswerSplatRouteImport.update({
+    id: '/api/harness-secret-answer/$',
+    path: '/api/harness-secret-answer/$',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiHarnessWaitsSplatRoute = ApiHarnessWaitsSplatRouteImport.update({
@@ -1400,6 +1406,7 @@ export interface FileRoutesByFullPath {
   '/api/multimodal-tool-result-wire': typeof ApiMultimodalToolResultWireRoute
   '/api/neon-wire': typeof ApiNeonWireRoute
   '/api/non-streaming-run-error': typeof ApiNonStreamingRunErrorRoute
+  '/api/ollama-finish-reason': typeof ApiOllamaFinishReasonRoute
   '/api/openai-completed-response-text': typeof ApiOpenaiCompletedResponseTextRoute
   '/api/openai-computer-use-wire': typeof ApiOpenaiComputerUseWireRoute
   '/api/openai-image-2-5-models': typeof ApiOpenaiImage25ModelsRoute
@@ -1452,10 +1459,10 @@ export interface FileRoutesByFullPath {
   '/api/wrap-fetch-wire': typeof ApiWrapFetchWireRoute
   '/$provider/': typeof ProviderIndexRoute
   '/api/audio/stream': typeof ApiAudioStreamRoute
-  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
-  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-handoff/$': typeof ApiHarnessHandoffSplatRoute
   '/api/harness-observability/$': typeof ApiHarnessObservabilitySplatRoute
+  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
+  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-waits/$': typeof ApiHarnessWaitsSplatRoute
   '/api/image/stream': typeof ApiImageStreamRoute
   '/api/transcription/stream': typeof ApiTranscriptionStreamRoute
@@ -1602,6 +1609,7 @@ export interface FileRoutesByTo {
   '/api/multimodal-tool-result-wire': typeof ApiMultimodalToolResultWireRoute
   '/api/neon-wire': typeof ApiNeonWireRoute
   '/api/non-streaming-run-error': typeof ApiNonStreamingRunErrorRoute
+  '/api/ollama-finish-reason': typeof ApiOllamaFinishReasonRoute
   '/api/openai-completed-response-text': typeof ApiOpenaiCompletedResponseTextRoute
   '/api/openai-computer-use-wire': typeof ApiOpenaiComputerUseWireRoute
   '/api/openai-image-2-5-models': typeof ApiOpenaiImage25ModelsRoute
@@ -1654,10 +1662,10 @@ export interface FileRoutesByTo {
   '/api/wrap-fetch-wire': typeof ApiWrapFetchWireRoute
   '/$provider': typeof ProviderIndexRoute
   '/api/audio/stream': typeof ApiAudioStreamRoute
-  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
-  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-handoff/$': typeof ApiHarnessHandoffSplatRoute
   '/api/harness-observability/$': typeof ApiHarnessObservabilitySplatRoute
+  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
+  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-waits/$': typeof ApiHarnessWaitsSplatRoute
   '/api/image/stream': typeof ApiImageStreamRoute
   '/api/transcription/stream': typeof ApiTranscriptionStreamRoute
@@ -1805,6 +1813,7 @@ export interface FileRoutesById {
   '/api/multimodal-tool-result-wire': typeof ApiMultimodalToolResultWireRoute
   '/api/neon-wire': typeof ApiNeonWireRoute
   '/api/non-streaming-run-error': typeof ApiNonStreamingRunErrorRoute
+  '/api/ollama-finish-reason': typeof ApiOllamaFinishReasonRoute
   '/api/openai-completed-response-text': typeof ApiOpenaiCompletedResponseTextRoute
   '/api/openai-computer-use-wire': typeof ApiOpenaiComputerUseWireRoute
   '/api/openai-image-2-5-models': typeof ApiOpenaiImage25ModelsRoute
@@ -1857,10 +1866,10 @@ export interface FileRoutesById {
   '/api/wrap-fetch-wire': typeof ApiWrapFetchWireRoute
   '/$provider/': typeof ProviderIndexRoute
   '/api/audio/stream': typeof ApiAudioStreamRoute
-  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
-  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-handoff/$': typeof ApiHarnessHandoffSplatRoute
   '/api/harness-observability/$': typeof ApiHarnessObservabilitySplatRoute
+  '/api/harness-protocol/$': typeof ApiHarnessProtocolSplatRoute
+  '/api/harness-secret-answer/$': typeof ApiHarnessSecretAnswerSplatRoute
   '/api/harness-waits/$': typeof ApiHarnessWaitsSplatRoute
   '/api/image/stream': typeof ApiImageStreamRoute
   '/api/transcription/stream': typeof ApiTranscriptionStreamRoute
@@ -2009,6 +2018,7 @@ export interface FileRouteTypes {
     | '/api/multimodal-tool-result-wire'
     | '/api/neon-wire'
     | '/api/non-streaming-run-error'
+    | '/api/ollama-finish-reason'
     | '/api/openai-completed-response-text'
     | '/api/openai-computer-use-wire'
     | '/api/openai-image-2-5-models'
@@ -2061,10 +2071,10 @@ export interface FileRouteTypes {
     | '/api/wrap-fetch-wire'
     | '/$provider/'
     | '/api/audio/stream'
-    | '/api/harness-protocol/$'
-    | '/api/harness-secret-answer/$'
     | '/api/harness-handoff/$'
     | '/api/harness-observability/$'
+    | '/api/harness-protocol/$'
+    | '/api/harness-secret-answer/$'
     | '/api/harness-waits/$'
     | '/api/image/stream'
     | '/api/transcription/stream'
@@ -2211,6 +2221,7 @@ export interface FileRouteTypes {
     | '/api/multimodal-tool-result-wire'
     | '/api/neon-wire'
     | '/api/non-streaming-run-error'
+    | '/api/ollama-finish-reason'
     | '/api/openai-completed-response-text'
     | '/api/openai-computer-use-wire'
     | '/api/openai-image-2-5-models'
@@ -2263,10 +2274,10 @@ export interface FileRouteTypes {
     | '/api/wrap-fetch-wire'
     | '/$provider'
     | '/api/audio/stream'
-    | '/api/harness-protocol/$'
-    | '/api/harness-secret-answer/$'
     | '/api/harness-handoff/$'
     | '/api/harness-observability/$'
+    | '/api/harness-protocol/$'
+    | '/api/harness-secret-answer/$'
     | '/api/harness-waits/$'
     | '/api/image/stream'
     | '/api/transcription/stream'
@@ -2413,6 +2424,7 @@ export interface FileRouteTypes {
     | '/api/multimodal-tool-result-wire'
     | '/api/neon-wire'
     | '/api/non-streaming-run-error'
+    | '/api/ollama-finish-reason'
     | '/api/openai-completed-response-text'
     | '/api/openai-computer-use-wire'
     | '/api/openai-image-2-5-models'
@@ -2465,10 +2477,10 @@ export interface FileRouteTypes {
     | '/api/wrap-fetch-wire'
     | '/$provider/'
     | '/api/audio/stream'
-    | '/api/harness-protocol/$'
-    | '/api/harness-secret-answer/$'
     | '/api/harness-handoff/$'
     | '/api/harness-observability/$'
+    | '/api/harness-protocol/$'
+    | '/api/harness-secret-answer/$'
     | '/api/harness-waits/$'
     | '/api/image/stream'
     | '/api/transcription/stream'
@@ -2616,6 +2628,7 @@ export interface RootRouteChildren {
   ApiMultimodalToolResultWireRoute: typeof ApiMultimodalToolResultWireRoute
   ApiNeonWireRoute: typeof ApiNeonWireRoute
   ApiNonStreamingRunErrorRoute: typeof ApiNonStreamingRunErrorRoute
+  ApiOllamaFinishReasonRoute: typeof ApiOllamaFinishReasonRoute
   ApiOpenaiCompletedResponseTextRoute: typeof ApiOpenaiCompletedResponseTextRoute
   ApiOpenaiComputerUseWireRoute: typeof ApiOpenaiComputerUseWireRoute
   ApiOpenaiImage25ModelsRoute: typeof ApiOpenaiImage25ModelsRoute
@@ -2667,10 +2680,10 @@ export interface RootRouteChildren {
   ApiWorldRoute: typeof ApiWorldRoute
   ApiWrapFetchWireRoute: typeof ApiWrapFetchWireRoute
   ProviderIndexRoute: typeof ProviderIndexRoute
-  ApiHarnessProtocolSplatRoute: typeof ApiHarnessProtocolSplatRoute
-  ApiHarnessSecretAnswerSplatRoute: typeof ApiHarnessSecretAnswerSplatRoute
   ApiHarnessHandoffSplatRoute: typeof ApiHarnessHandoffSplatRoute
   ApiHarnessObservabilitySplatRoute: typeof ApiHarnessObservabilitySplatRoute
+  ApiHarnessProtocolSplatRoute: typeof ApiHarnessProtocolSplatRoute
+  ApiHarnessSecretAnswerSplatRoute: typeof ApiHarnessSecretAnswerSplatRoute
   ApiHarnessWaitsSplatRoute: typeof ApiHarnessWaitsSplatRoute
 }
 
@@ -3656,6 +3669,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNonStreamingRunErrorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ollama-finish-reason': {
+      id: '/api/ollama-finish-reason'
+      path: '/api/ollama-finish-reason'
+      fullPath: '/api/ollama-finish-reason'
+      preLoaderRoute: typeof ApiOllamaFinishReasonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/openai-completed-response-text': {
       id: '/api/openai-completed-response-text'
       path: '/api/openai-completed-response-text'
@@ -4013,20 +4033,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAudioStreamRouteImport
       parentRoute: typeof ApiAudioRoute
     }
-    '/api/harness-protocol/$': {
-      id: '/api/harness-protocol/$'
-      path: '/api/harness-protocol/$'
-      fullPath: '/api/harness-protocol/$'
-      preLoaderRoute: typeof ApiHarnessProtocolSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/harness-secret-answer/$': {
-      id: '/api/harness-secret-answer/$'
-      path: '/api/harness-secret-answer/$'
-      fullPath: '/api/harness-secret-answer/$'
-      preLoaderRoute: typeof ApiHarnessSecretAnswerSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/harness-handoff/$': {
       id: '/api/harness-handoff/$'
       path: '/api/harness-handoff/$'
@@ -4039,6 +4045,20 @@ declare module '@tanstack/react-router' {
       path: '/api/harness-observability/$'
       fullPath: '/api/harness-observability/$'
       preLoaderRoute: typeof ApiHarnessObservabilitySplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/harness-protocol/$': {
+      id: '/api/harness-protocol/$'
+      path: '/api/harness-protocol/$'
+      fullPath: '/api/harness-protocol/$'
+      preLoaderRoute: typeof ApiHarnessProtocolSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/harness-secret-answer/$': {
+      id: '/api/harness-secret-answer/$'
+      path: '/api/harness-secret-answer/$'
+      fullPath: '/api/harness-secret-answer/$'
+      preLoaderRoute: typeof ApiHarnessSecretAnswerSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/harness-waits/$': {
@@ -4282,6 +4302,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMultimodalToolResultWireRoute: ApiMultimodalToolResultWireRoute,
   ApiNeonWireRoute: ApiNeonWireRoute,
   ApiNonStreamingRunErrorRoute: ApiNonStreamingRunErrorRoute,
+  ApiOllamaFinishReasonRoute: ApiOllamaFinishReasonRoute,
   ApiOpenaiCompletedResponseTextRoute: ApiOpenaiCompletedResponseTextRoute,
   ApiOpenaiComputerUseWireRoute: ApiOpenaiComputerUseWireRoute,
   ApiOpenaiImage25ModelsRoute: ApiOpenaiImage25ModelsRoute,
@@ -4334,10 +4355,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWorldRoute: ApiWorldRoute,
   ApiWrapFetchWireRoute: ApiWrapFetchWireRoute,
   ProviderIndexRoute: ProviderIndexRoute,
-  ApiHarnessProtocolSplatRoute: ApiHarnessProtocolSplatRoute,
-  ApiHarnessSecretAnswerSplatRoute: ApiHarnessSecretAnswerSplatRoute,
   ApiHarnessHandoffSplatRoute: ApiHarnessHandoffSplatRoute,
   ApiHarnessObservabilitySplatRoute: ApiHarnessObservabilitySplatRoute,
+  ApiHarnessProtocolSplatRoute: ApiHarnessProtocolSplatRoute,
+  ApiHarnessSecretAnswerSplatRoute: ApiHarnessSecretAnswerSplatRoute,
   ApiHarnessWaitsSplatRoute: ApiHarnessWaitsSplatRoute,
 }
 export const routeTree = rootRouteImport
