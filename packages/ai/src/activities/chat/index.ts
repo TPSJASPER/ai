@@ -5699,6 +5699,7 @@ class TextEngine<
   }
 
   private applyMiddlewareConfig(config: ChatMiddlewareConfig): void {
+    this.applyResumeToolState(config.resumeToolState)
     this.messages = config.messages
     if (config.activities !== undefined) {
       this.setActivities(config.activities)
@@ -5707,8 +5708,6 @@ class TextEngine<
     this.systemPrompts = config.systemPrompts
     assertUniqueToolNames(config.tools)
     this.tools = config.tools
-    // MCP input answers need the restored history and server tool definitions.
-    this.applyResumeToolState(config.resumeToolState)
     this.params = {
       ...this.params,
       metadata: config.metadata,
